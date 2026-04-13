@@ -1,0 +1,246 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   TOKENS — Light / Verde Sano
+   ============================================================ */
+@layer base {
+  :root {
+    /* Backgrounds */
+    --background:      248 250 252;   /* #F8FAFC slate-50 */
+    --surface:         255 255 255;   /* #FFFFFF */
+    --elevated:        255 255 255;
+    --overlay:         241 245 249;   /* #F1F5F9 slate-100 */
+    --card:            255 255 255;
+    --card-foreground: 15  23  42;    /* #0F172A */
+
+    /* Borders */
+    --border:          226 232 240;   /* #E2E8F0 slate-200 */
+    --border-mid:      203 213 225;   /* #CBD5E1 slate-300 */
+    --border-strong:   148 163 184;   /* #94A3B8 slate-400 */
+
+    /* Text */
+    --foreground:      15  23  42;    /* #0F172A slate-900 */
+    --muted:           241 245 249;   /* #F1F5F9 */
+    --muted-foreground: 100 116 139;  /* #64748B slate-500 */
+    --subtle:          148 163 184;   /* #94A3B8 slate-400 */
+
+    /* Input */
+    --input: 248 250 252;
+
+    /* Accent / Primary */
+    --primary:        34  197  94;    /* #22c55e */
+    --primary-foreground: 255 255 255;
+
+    /* Secondary */
+    --secondary:      241 245 249;
+    --secondary-foreground: 15 23 42;
+
+    /* Status */
+    --destructive:   239  68  68;    /* #EF4444 */
+    --destructive-foreground: 255 255 255;
+    --success:        34  197  94;
+    --warning:       245 158  11;    /* #F59E0B */
+    --info:           59 130 246;    /* #3B82F6 */
+
+    --ring:   34 197 94;
+    --radius: 0.5rem;
+  }
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+@layer base {
+  *, *::before, *::after {
+    @apply box-border border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar       { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #F1F5F9; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+  h1 { font-family: 'Space Grotesk', sans-serif; @apply text-2xl font-semibold tracking-tight; }
+  h2 { font-family: 'Space Grotesk', sans-serif; @apply text-lg  font-semibold; }
+  h3 { font-family: 'Space Grotesk', sans-serif; @apply text-base font-medium; }
+}
+
+/* ============================================================
+   COMPONENTS
+   ============================================================ */
+@layer utilities {
+
+  /* ── Heading font ── */
+  .font-heading {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  /* ── Card ── */
+  .card {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .card-elevated {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .card-subtle {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+  }
+
+  /* ── Skeleton shimmer ── */
+  .skeleton {
+    background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+    background-size: 200% 100%;
+    border-radius: 6px;
+    animation: shimmer 1.5s ease infinite;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── Badge ── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    letter-spacing: 0.01em;
+  }
+  .badge-green  { background: rgba(34,197,94,.1);   color: #16a34a; border: 1px solid rgba(34,197,94,.25); }
+  .badge-yellow { background: rgba(245,158,11,.1);  color: #b45309; border: 1px solid rgba(245,158,11,.25); }
+  .badge-red    { background: rgba(239,68,68,.1);   color: #dc2626; border: 1px solid rgba(239,68,68,.25); }
+  .badge-gray   { background: #F1F5F9;               color: #64748B; border: 1px solid #E2E8F0; }
+  .badge-blue   { background: rgba(59,130,246,.1);  color: #2563eb; border: 1px solid rgba(59,130,246,.25); }
+
+  /* ── Input ── */
+  .input {
+    width: 100%;
+    padding: 10px 14px;
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    color: #0F172A;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+    line-height: 1.5;
+  }
+  .input::placeholder { color: #94A3B8; }
+  .input:focus {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34,197,94,.12);
+  }
+  select.input  { cursor: pointer; }
+  textarea.input { resize: vertical; }
+
+  /* ── Buttons ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4
+           text-sm font-medium transition-all duration-150 disabled:opacity-40
+           disabled:cursor-not-allowed focus:outline-none cursor-pointer;
+    min-height: 40px;
+    font-family: 'DM Sans', sans-serif;
+    letter-spacing: 0.01em;
+  }
+
+  .btn-primary {
+    @apply btn;
+    background: #22c55e;
+    color: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(34,197,94,.3);
+  }
+  .btn-primary:hover:not(:disabled)  { background: #16a34a; box-shadow: 0 2px 8px rgba(34,197,94,.35); }
+  .btn-primary:active:not(:disabled) { transform: scale(0.98); background: #15803d; }
+
+  .btn-outline {
+    @apply btn;
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    color: #374151;
+  }
+  .btn-outline:hover:not(:disabled)  { background: #F8FAFC; border-color: #CBD5E1; }
+  .btn-outline:active:not(:disabled) { transform: scale(0.98); }
+
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: #64748B;
+  }
+  .btn-ghost:hover:not(:disabled)  { background: #F1F5F9; color: #0F172A; }
+  .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
+
+  .btn-danger {
+    @apply btn;
+    background: #EF4444;
+    color: #FFFFFF;
+  }
+  .btn-danger:hover:not(:disabled) { background: #DC2626; }
+
+  /* ── Nav link (sidebar) ── */
+  .nav-link {
+    @apply flex items-center gap-3 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer;
+    min-height: 40px;
+    color: #64748B;
+  }
+  .nav-link:hover  { background: #F1F5F9; color: #0F172A; }
+  .nav-link.active { background: rgba(34,197,94,.1); color: #16a34a; font-weight: 600; }
+
+  /* ── Toggle ── */
+  .toggle {
+    @apply relative shrink-0 rounded-full transition-colors duration-200 cursor-pointer;
+    width: 44px;
+    height: 24px;
+  }
+  .toggle-thumb {
+    @apply absolute top-1 rounded-full bg-white shadow transition-transform duration-200;
+    width: 16px;
+    height: 16px;
+  }
+
+  /* ── Divider ── */
+  .divider { border-top: 1px solid #E2E8F0; }
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease forwards;
+}

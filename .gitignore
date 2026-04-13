@@ -1,0 +1,38 @@
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+
+# Build / Output
+.next/
+dist/
+build/
+out/
+
+# Variáveis de ambiente (NUNCA commitar)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Sessões do WhatsApp (Baileys)
+auth_info/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.DS_Store
+.vscode/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Supabase local state
+supabase/.temp/
+
+# Claude
+.claude/
