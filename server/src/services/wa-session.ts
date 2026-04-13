@@ -12,6 +12,8 @@
  */
 
 import path   from 'path'
+import fs     from 'fs'
+import os     from 'os'
 import { EventEmitter } from 'events'
 import type { InboundEvent, WAStatus } from '../types'
 
@@ -133,7 +135,7 @@ export class WASession {
 
         console.log(`[WA:${this.tenantId}] inbound remoteJid=${msg.key.remoteJid}`)
 
-        const event = this.normalizeMessage(msg)
+        const event = await this.normalizeMessage(msg)
         if (!event) continue
 
         if (event.wa_message_id) this.cacheMsg(event.wa_message_id, msg)
@@ -227,7 +229,7 @@ export class WASession {
     this.msgCache.set(waMessageId, rawMsg)
   }
 
-  private normalizeMessage(msg: any): InboundEvent | null {
+  private async normalizeMessage(msg: any): Promise<InboundEvent | null> {
     const jid = msg.key.remoteJid as string
     if (!jid || jid.includes('@g.us')) return null
 
@@ -246,11 +248,21 @@ export class WASession {
     }
 
     if (msgContent?.audioMessage) {
+      let audioPath: string | undefined
+      try {
+        const { downloadMediaMessage } = await import('@whiskeysockets/baileys') as any
+        const buffer  = await downloadMediaMessage(msg, 'buffer', {})
+        audioPath     = path.join(os.tmpdir(), `sano_audio_${msg.key.id}.ogg`)
+        fs.writeFileSync(audioPath, buffer as Buffer)
+      } catch (err) {
+        console.error(`[WA:${this.tenantId}] Falha ao baixar áudio:`, err)
+      }
       return {
         tenant_id:     this.tenantId,
         phone,
         wa_jid:        jid,
         type:          'audio',
+        media_url:     audioPath,
         wa_message_id: msg.key.id,
       }
     }

@@ -16,7 +16,6 @@
 import * as fs   from 'fs'
 import * as path from 'path'
 import * as os   from 'os'
-import axios     from 'axios'
 
 import supabase from '../services/supabase.service'
 import openai   from '../services/openai.service'
@@ -59,15 +58,9 @@ async function transcribeAudio(
     return { text: 'Não consegui ouvir o áudio, pode escrever?', usedFallback: true }
   }
 
-  let tmpFile: string | null = null
   try {
-    const response = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30_000 })
-    const ext      = mediaUrl.includes('.ogg') ? 'ogg' : 'mp3'
-    tmpFile        = path.join(os.tmpdir(), `sano_${messageId}.${ext}`)
-    fs.writeFileSync(tmpFile, Buffer.from(response.data))
-
     const transcription = await openai.audio.transcriptions.create({
-      file:     fs.createReadStream(tmpFile) as any,
+      file:     fs.createReadStream(mediaUrl) as any,
       model:    'whisper-1',
       language: 'pt',
     })
@@ -81,7 +74,7 @@ async function transcribeAudio(
     console.error(`[PIPELINE:${tenantId}] Transcrição falhou:`, err)
     return { text: 'Não consegui ouvir o áudio, pode escrever?', usedFallback: true }
   } finally {
-    if (tmpFile && fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile)
+    if (fs.existsSync(mediaUrl)) fs.unlinkSync(mediaUrl)
   }
 }
 
