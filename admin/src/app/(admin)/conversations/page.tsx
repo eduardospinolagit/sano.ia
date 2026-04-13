@@ -31,7 +31,7 @@ export default function ConversationsPage() {
     setLoading(true)
     let q = supabase
       .from('conversations')
-      .select('id, status, last_message_at, relationship_level, users(phone, display_name)')
+      .select('id, status, last_message_at, relationship_level, user:user_id(phone, display_name)')
       .eq('tenant_id', tenant!.id)
       .order('last_message_at', { ascending: false })
       .limit(100)
@@ -130,7 +130,7 @@ export default function ConversationsPage() {
           style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
         >
           {filtered.map((conv, idx) => {
-            const user  = conv.users as any
+            const user  = conv.user as any
             const name  = user?.display_name ?? user?.phone ?? conv.id.slice(0, 8)
             const level = conv.relationship_level ?? 0
 

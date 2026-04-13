@@ -36,12 +36,12 @@ export default function DashboardPage() {
       supabase.from('conversations').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant!.id).eq('status', 'active'),
       supabase.from('conversations')
-        .select('id, status, last_message_at, users(phone, display_name)')
+        .select('id, status, last_message_at, user:user_id(phone, display_name)')
         .eq('tenant_id', tenant!.id)
         .order('last_message_at', { ascending: false })
         .limit(8),
       // Leads quentes: relationship_level >= 4
-      supabase.from('conversations').select('id, relationship_level, status, users(phone, display_name)')
+      supabase.from('conversations').select('id, relationship_level, status, user:user_id(phone, display_name)')
         .eq('tenant_id', tenant!.id).gte('relationship_level', 4)
         .order('relationship_level', { ascending: false }).limit(20),
       // Leads em andamento: relationship_level 2-3
@@ -194,7 +194,7 @@ export default function DashboardPage() {
             {showHotList && hotLeadList.length > 0 && (
               <div className="space-y-2 pt-1" style={{ borderTop: '1px solid #F1F5F9' }}>
                 {hotLeadList.map(conv => {
-                  const user = conv.users as any
+                  const user = conv.user as any
                   const name = user?.display_name ?? user?.phone ?? conv.id.slice(0, 8)
                   const intention = INTENTION_LABELS[conv.relationship_level] ?? '—'
                   return (
@@ -291,7 +291,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             recent.map((conv) => {
-              const user = conv.users as any
+              const user = conv.user as any
               const name = user?.display_name ?? user?.phone ?? conv.id.slice(0, 8)
               return (
                 <div
