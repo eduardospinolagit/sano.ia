@@ -99,11 +99,11 @@ function applyPunctuation(text: string, style: PunctuationStyle): string {
 
   if (style === 'minimal') {
     // Converte pontos intermediários em espaço (frases viram sequência contínua)
-    result = result.replace(/\.\s+/g, ' ')
+    result = result.replace(/\.(?!\n) +/g, ' ')
     // Remove vírgulas exceto antes de "mas" e "porém"
     result = result.replace(/,\s*(?!(mas|porém|então)\b)/gi, ' ')
-    // Normaliza
-    result = result.replace(/\s+/g, ' ').trim()
+    // Normaliza espaços (preserva newlines)
+    result = result.replace(/ +/g, ' ').trim()
   }
 
   return result
@@ -180,8 +180,8 @@ export function transformText(text: string, style: NLDStyleProfile): string {
   // 5. Imperfeições probabilísticas
   result = applyImperfections(result, style)
 
-  // Normaliza espaços duplos
-  result = result.replace(/\s+/g, ' ').trim()
+  // Normaliza espaços duplos (preserva newlines)
+  result = result.replace(/ +/g, ' ').trim()
 
   return result
 }

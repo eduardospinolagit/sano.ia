@@ -54,6 +54,9 @@ export function computeSplitStrategy(
   style:    NLDStyleProfile,
   behavior: BehaviorProfile
 ): SplitStrategy {
+  // Listas (texto com quebras de linha) → sempre single para preservar formatação
+  if (text.includes('\n')) return 'single'
+
   const words    = text.trim().split(/\s+/).length
   const mood     = behavior.mood_state
   const presence = behavior.presence_state
