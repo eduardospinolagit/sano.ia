@@ -60,10 +60,13 @@ export default function ConversationsPage() {
     if (filter !== 'all') q = q.eq('status', filter)
     const { data } = await q
 
-    // dedup: mantém só a conversa mais recente por usuário
+    // dedup: remove LIDs (phone >13 dígitos são IDs internos do WhatsApp, não números reais)
+    // e mantém só a conversa mais recente por número real
     const seen = new Set<string>()
     const deduped = (data ?? []).filter(c => {
-      const key = c.user?.phone ?? c.id
+      const phone = c.user?.phone ?? ''
+      if (phone.length > 13) return false   // descarta LID
+      const key = phone || c.id
       if (seen.has(key)) return false
       seen.add(key)
       return true
