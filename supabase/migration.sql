@@ -152,3 +152,20 @@ do $$ begin
       for each row execute function set_updated_at();
   end if;
 end $$;
+
+-- ─── Localização do agente (2026-04-14) ──────────────────────
+alter table agents
+  add column if not exists location_enabled  boolean not null default false,
+  add column if not exists location_lat      double precision,
+  add column if not exists location_lng      double precision,
+  add column if not exists location_name     text,
+  add column if not exists location_address  text;
+
+-- ─── Notificações para o empresário (2026-04-14) ─────────────
+alter table agents
+  add column if not exists notification_enabled boolean not null default false,
+  add column if not exists notification_phone   text,
+  add column if not exists notification_fields  jsonb not null default '["cliente","resumo"]';
+
+-- remove coluna de estilo se existir (substituída por notification_fields)
+alter table agents drop column if exists notification_style;

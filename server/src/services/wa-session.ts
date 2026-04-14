@@ -62,14 +62,15 @@ export class WASession {
       auth:                           authState,
       printQRInTerminal:              false,
       logger:                         this.silentLogger(),
-      browser:                        Browsers.macOS('Desktop'),
+      browser:                        Browsers.ubuntu('Chrome'),
       generateHighQualityLinkPreview: false,
-      markOnlineOnConnect:            true,
+      markOnlineOnConnect:            false,
       syncFullHistory:                false,
-      fireInitQueries:                false,
+      fireInitQueries:                true,
       connectTimeoutMs:               60_000,
       keepAliveIntervalMs:            25_000,
       retryRequestDelayMs:            2_000,
+      getMessage:                     async () => ({ conversation: '' }),
     })
 
     this.socket = sock
@@ -111,7 +112,7 @@ export class WASession {
       if (connection === 'open') {
         this.status = 'connected'
         this.qrCode = null
-        console.log(`[WA:${this.tenantId}] Conectado!`)
+        console.log(`[WA:${this.tenantId}] Conectado! receivedPendingNotifications=${update.receivedPendingNotifications}`)
         this.emitter.emit('connected')
       }
     })
@@ -132,8 +133,6 @@ export class WASession {
       for (const msg of messages) {
         if (msg.key.fromMe) continue
         if (!msg.message)   continue
-
-        console.log(`[WA:${this.tenantId}] inbound remoteJid=${msg.key.remoteJid}`)
 
         const event = await this.normalizeMessage(msg)
         if (!event) continue
@@ -213,6 +212,19 @@ export class WASession {
     return this.status === 'connected' && !!this.socket
   }
 
+  async resolvePhone(phone: string): Promise<{ exists: boolean; jid: string }> {
+    const fallback = `${phone}@s.whatsapp.net`
+    if (!this.socket) return { exists: true, jid: fallback }
+    try {
+      const results = await this.socket.onWhatsApp(fallback)
+      const found   = results?.[0]
+      if (!found) return { exists: false, jid: fallback }
+      return { exists: found.exists !== false, jid: found.jid ?? fallback }
+    } catch {
+      return { exists: true, jid: fallback }
+    }
+  }
+
   // ─── Helpers privados ─────────────────────────────────────────
 
   private assertConnected(): void {
@@ -233,17 +245,35 @@ export class WASession {
     const jid = msg.key.remoteJid as string
     if (!jid || jid.includes('@g.us')) return null
 
-    const phone      = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '').replace(/\D/g, '')
+    const isLid      = jid.endsWith('@lid')
+    const push_name  = (msg.pushName as string | undefined) || undefined
     const msgContent = msg.message
+
+    // Tenta resolver LID → número de telefone real via Baileys
+    const lidRaw = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, '').replace(/\D/g, '')
+    let phone    = lidRaw
+    let lid_phone: string | undefined
+    if (isLid && this.socket) {
+      try {
+        const results = await this.socket.onWhatsApp(jid)
+        const resolved = results?.[0]
+        if (resolved?.jid && resolved.jid.endsWith('@s.whatsapp.net')) {
+          phone     = resolved.jid.replace('@s.whatsapp.net', '')
+          lid_phone = lidRaw   // guarda o LID original para migrar usuário existente
+          console.log(`[WA:${this.tenantId}] LID ${jid} resolvido → ${phone}`)
+        }
+      } catch {
+        // falha silenciosa — usa LID como phone fallback
+      }
+    }
+
+    const baseEvent = { tenant_id: this.tenantId, phone, push_name, lid_phone, wa_jid: jid, wa_message_id: msg.key.id }
 
     if (msgContent?.conversation || msgContent?.extendedTextMessage?.text) {
       return {
-        tenant_id:     this.tenantId,
-        phone,
-        wa_jid:        jid,
-        type:          'text',
-        content:       msgContent.conversation ?? msgContent.extendedTextMessage.text,
-        wa_message_id: msg.key.id,
+        ...baseEvent,
+        type:    'text',
+        content: msgContent.conversation ?? msgContent.extendedTextMessage.text,
       }
     }
 
@@ -257,28 +287,54 @@ export class WASession {
       } catch (err) {
         console.error(`[WA:${this.tenantId}] Falha ao baixar áudio:`, err)
       }
-      return {
-        tenant_id:     this.tenantId,
-        phone,
-        wa_jid:        jid,
-        type:          'audio',
-        media_url:     audioPath,
-        wa_message_id: msg.key.id,
-      }
+      return { ...baseEvent, type: 'audio', media_url: audioPath }
     }
 
     if (msgContent?.imageMessage) {
       return {
-        tenant_id:     this.tenantId,
-        phone,
-        wa_jid:        jid,
-        type:          'image',
-        content:       msgContent.imageMessage.caption ?? '',
-        wa_message_id: msg.key.id,
+        ...baseEvent,
+        type:    'image',
+        content: msgContent.imageMessage.caption ?? '',
+      }
+    }
+
+    if (msgContent?.locationMessage) {
+      const loc = msgContent.locationMessage
+      return {
+        ...baseEvent,
+        type:     'location',
+        location: {
+          lat:     loc.degreesLatitude,
+          lng:     loc.degreesLongitude,
+          name:    loc.name    || undefined,
+          address: loc.address || undefined,
+        },
+        content: `Localização: ${loc.degreesLatitude},${loc.degreesLongitude}${loc.name ? ` (${loc.name})` : ''}`,
       }
     }
 
     return null
+  }
+
+  async sendLocation(
+    phone:    string,
+    lat:      number,
+    lng:      number,
+    name?:    string,
+    address?: string,
+    waJid?:   string
+  ): Promise<void> {
+    this.assertConnected()
+    const jid = waJid ?? `${phone}@s.whatsapp.net`
+    await this.socket.sendMessage(jid, {
+      location: {
+        degreesLatitude:  lat,
+        degreesLongitude: lng,
+        name:             name    ?? '',
+        address:          address ?? '',
+      },
+    })
+    console.log(`[WA:${this.tenantId}] sendLocation → jid=${jid} lat=${lat} lng=${lng}`)
   }
 
   private silentLogger(): any {

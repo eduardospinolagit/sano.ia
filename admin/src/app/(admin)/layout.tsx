@@ -121,8 +121,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* ── Main ── */}
-      <main className="flex-1 overflow-auto min-w-0" style={{ background: '#F8FAFC', scrollbarGutter: 'stable' }}>
-        {loading ? null : children}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden" style={{ background: '#F8FAFC' }}>
+
+        {/* Topbar fixa com o nome da página */}
+        {!loading && (() => {
+          const current = NAV.find(n => pathname === n.href || pathname.startsWith(n.href + '/'))
+          if (!current) return null
+          return (
+            <div
+              className="shrink-0 px-8 pt-7 pb-4"
+              style={{ borderBottom: '1px solid #F1F5F9' }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#CBD5E1' }}>
+                {current.label}
+              </p>
+            </div>
+          )
+        })()}
+
+        {/* Conteúdo rolável */}
+        <div className="flex-1 overflow-auto" style={{ scrollbarGutter: 'stable' }}>
+          {loading ? null : children}
+        </div>
+
       </main>
     </div>
   )

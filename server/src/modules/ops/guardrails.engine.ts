@@ -50,16 +50,27 @@ export async function runGuardrails(input: {
     }
   }
 
-  // Mensagem duplicada
+  // Mensagem já respondida (dedup inteligente: bloqueia só se já gerou outbound)
   if (waMessageId) {
-    const { count } = await supabase
+    const { data: existing } = await supabase
       .from('messages')
-      .select('id', { count: 'exact', head: true })
+      .select('id, conversation_id, created_at')
       .eq('tenant_id', tenantId)
       .contains('metadata', { wa_message_id: waMessageId })
+      .maybeSingle()
 
-    if ((count ?? 0) > 0) {
-      return { verdict: 'block', reason: 'Mensagem duplicada' }
+    if (existing) {
+      const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('conversation_id', (existing as any).conversation_id)
+        .eq('direction', 'outbound')
+        .gt('created_at', (existing as any).created_at)
+
+      if ((count ?? 0) > 0) {
+        return { verdict: 'block', reason: 'Mensagem já respondida' }
+      }
+      // Mensagem recebida mas sem resposta — permite reprocessamento
     }
   }
 

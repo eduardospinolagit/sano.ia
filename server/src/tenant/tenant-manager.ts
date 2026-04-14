@@ -187,7 +187,7 @@ async function flushDebounce(runtime: TenantRuntime, events: InboundEvent[]): Pr
   }
 
   const last = events[events.length - 1]
-  const combined: InboundEvent = { ...last, type: 'text', content: textParts.join('\n') }
+  const combined: InboundEvent = { ...last, type: 'text', content: textParts.join('\n'), is_combined: true }
 
   console.log(`[PIPELINE:${runtime.tenant.slug}] Debounce: ${events.length} msgs de ${last.phone}`)
   await runPipeline(combined, runtime)

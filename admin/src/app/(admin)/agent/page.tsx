@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant }     from '@/hooks/use-tenant'
-import { Check, CheckCircle2, Loader2, Plus, Trash2, BookOpen, Smartphone, Settings2, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Check, CheckCircle2, Loader2, Plus, Trash2, BookOpen, Smartphone, Settings2, ArrowLeft, MapPin, Pencil, X } from 'lucide-react'
+import Link         from 'next/link'
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
 const S = { background: '#FFFFFF', border: '1px solid #E2E8F0' }
@@ -79,6 +79,9 @@ export default function AgentPage() {
         followup_messages:     agent.followup_messages,
         followup_max_attempts: agent.followup_max_attempts,
         active_hours_config:   agent.active_hours_config,
+        notification_enabled:  agent.notification_enabled  ?? false,
+        notification_phone:    agent.notification_phone   ?? null,
+        notification_fields:   agent.notification_fields  ?? ['cliente', 'resumo'],
       }).eq('id', agent.id)
       try { await fetch(`${SERVER_URL}/tenants/${tenant?.id}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
       setSaved(true)
@@ -94,10 +97,7 @@ export default function AgentPage() {
 
   if (!mode) return (
     <div className="p-8 max-w-xl mx-auto space-y-8 animate-fade-in">
-      <div>
-        <h1 className="font-heading text-xl font-semibold" style={{ color: '#0F172A' }}>Configurar agente</h1>
-        <p className="text-sm mt-1" style={{ color: '#94A3B8' }}>Como você quer configurar o {agent.name}?</p>
-      </div>
+      <p className="text-sm" style={{ color: '#64748B' }}>Como você quer configurar o {agent.name}?</p>
 
       <div className="space-y-3">
         <button
@@ -221,11 +221,7 @@ export default function AgentPage() {
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h1 className="font-heading text-xl font-semibold" style={{ color: '#0F172A' }}>
-              Configuração avançada
-            </h1>
-          </div>
+          <div />
         </div>
         <button
           onClick={async () => { await saveAgent(); setTimeout(() => setMode('success'), 1200) }}
@@ -297,16 +293,18 @@ export default function AgentPage() {
 
       {/* ── Comportamento ── */}
       {tab === 'Comportamento' && (
-        <div className="space-y-5 max-w-lg">
-          <div className="rounded-xl p-5 space-y-4" style={S}>
-            <div className="flex items-center justify-between">
-              <div>
+        <div className="space-y-4 max-w-2xl">
+
+          {/* Criatividade */}
+          <div className="rounded-xl p-5 space-y-4 flex flex-col" style={S}>
+            <div>
+              <div className="flex items-center justify-between">
                 <p className="text-sm font-medium" style={{ color: '#0F172A' }}>Criatividade das respostas</p>
-                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Controla o quanto o agente varia nas respostas</p>
+                <span className="text-sm font-semibold tabular-nums" style={{ color: '#22c55e' }}>
+                  {(agent.temperature ?? 0.7).toFixed(2)}
+                </span>
               </div>
-              <span className="text-sm font-semibold tabular-nums" style={{ color: '#22c55e' }}>
-                {(agent.temperature ?? 0.7).toFixed(2)}
-              </span>
+              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Controla o quanto o agente varia nas respostas</p>
             </div>
             <input
               type="range" min="0.3" max="1.2" step="0.05"
@@ -320,11 +318,96 @@ export default function AgentPage() {
               <span>Mais criativo</span>
             </div>
           </div>
+
+          {/* Notificações */}
+          <div className="rounded-xl p-5 space-y-4 flex flex-col" style={S}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium" style={{ color: '#0F172A' }}>Notificações no WhatsApp</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: '#64748B' }}>
+                  Receba uma mensagem quando o agente fechar uma venda, pedido, reunião ou lead
+                </p>
+              </div>
+              <button
+                onClick={() => setAgent({ ...agent, notification_enabled: !(agent.notification_enabled ?? false) })}
+                className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 mt-0.5"
+                style={{ background: (agent.notification_enabled ?? false) ? '#22c55e' : '#E2E8F0' }}
+              >
+                <span
+                  className="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                  style={{ transform: (agent.notification_enabled ?? false) ? 'translateX(22px)' : 'translateX(2px)' }}
+                />
+              </button>
+            </div>
+
+            {(agent.notification_enabled ?? false) && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium" style={{ color: '#0F172A' }}>Seu número (com DDI)</p>
+                  <input
+                    className="input"
+                    placeholder="5519999999999"
+                    value={agent.notification_phone ?? ''}
+                    onChange={e => setAgent({ ...agent, notification_phone: e.target.value.replace(/\D/g, '') })}
+                  />
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Ex: 5519998887766</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium" style={{ color: '#0F172A' }}>Campos da notificação</p>
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Escolha quais informações aparecem na mensagem</p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {([
+                      { key: 'cliente',   label: 'Cliente',           icon: '👤' },
+                      { key: 'resumo',    label: 'Resumo do evento',  icon: '📝' },
+                      { key: 'valor',     label: 'Valor da compra',   icon: '💵' },
+                      { key: 'produtos',  label: 'Produtos / itens',  icon: '🛍️' },
+                      { key: 'pagamento', label: 'Forma de pagamento',icon: '💳' },
+                      { key: 'horario',   label: 'Horário / data',    icon: '🕐' },
+                      { key: 'endereco',  label: 'Endereço',          icon: '📍' },
+                      { key: 'contexto',  label: 'Contexto',          icon: '💬' },
+                    ] as { key: string; label: string; icon: string }[]).map(f => {
+                      const fields  = (agent.notification_fields ?? ['cliente', 'resumo']) as string[]
+                      const checked = fields.includes(f.key)
+                      const toggle  = () => {
+                        const next = checked
+                          ? fields.filter(x => x !== f.key)
+                          : [...fields, f.key]
+                        setAgent({ ...agent, notification_fields: next })
+                      }
+                      return (
+                        <button
+                          key={f.key}
+                          onClick={toggle}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all"
+                          style={{
+                            background: checked ? 'rgba(34,197,94,.06)' : '#F8FAFC',
+                            border: checked ? '1.5px solid rgba(34,197,94,.4)' : '1.5px solid #E2E8F0',
+                          }}
+                        >
+                          <span
+                            className="flex-shrink-0 w-4 h-4 rounded flex items-center justify-center"
+                            style={{ background: checked ? '#22c55e' : '#E2E8F0' }}
+                          >
+                            {checked && <span className="text-white" style={{ fontSize: 9, lineHeight: 1 }}>✓</span>}
+                          </span>
+                          <span className="text-xs" style={{ color: checked ? '#16a34a' : '#0F172A' }}>
+                            {f.icon} {f.label}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
       {tab === 'Conhecimento' && tenant && (
-        <KnowledgeTab tenantId={tenant.id} supabase={supabase} />
+        <KnowledgeTab tenantId={tenant.id} supabase={supabase} agent={agent} setAgent={setAgent} />
       )}
 
       {tab === 'Follow-up' && <FollowUpTab agent={agent} setAgent={setAgent} />}
@@ -598,13 +681,40 @@ function FollowUpTab({ agent, setAgent }: { agent: any; setAgent: (a: any) => vo
 
 // ─── Conhecimento ─────────────────────────────────────────────
 
-function KnowledgeTab({ tenantId, supabase }: { tenantId: string; supabase: any }) {
+function KnowledgeTab({ tenantId, supabase, agent, setAgent }: {
+  tenantId: string; supabase: any; agent: any; setAgent: (a: any) => void
+}) {
   const [entries,  setEntries]  = useState<any[]>([])
   const [newTitle, setNewTitle] = useState('')
   const [newBody,  setNewBody]  = useState('')
   const [adding,   setAdding]   = useState(false)
 
+  // localização
+  const [locEnabled, setLocEnabled] = useState<boolean>(agent?.location_enabled ?? false)
+  const [locLat,     setLocLat]     = useState<string>(String(agent?.location_lat  ?? ''))
+  const [locLng,     setLocLng]     = useState<string>(String(agent?.location_lng  ?? ''))
+  const [locName,    setLocName]    = useState<string>(agent?.location_name ?? '')
+  const [locAddress, setLocAddress] = useState<string>(agent?.location_address ?? '')
+  const [locSaving,  setLocSaving]  = useState(false)
+  const [locDirty,   setLocDirty]   = useState(false)
+
+  // edição inline de entrada
+  const [editingId,    setEditingId]    = useState<string | null>(null)
+  const [editTitle,    setEditTitle]    = useState('')
+  const [editBody,     setEditBody]     = useState('')
+  const [editSaving,   setEditSaving]   = useState(false)
+
   useEffect(() => { load() }, [tenantId])
+  useEffect(() => {
+    if (agent) {
+      setLocEnabled(agent.location_enabled ?? false)
+      setLocLat(String(agent.location_lat  ?? ''))
+      setLocLng(String(agent.location_lng  ?? ''))
+      setLocName(agent.location_name ?? '')
+      setLocAddress(agent.location_address ?? '')
+      setLocDirty(false)
+    }
+  }, [agent?.id])
 
   async function load() {
     const { data } = await supabase
@@ -624,13 +734,149 @@ function KnowledgeTab({ tenantId, supabase }: { tenantId: string; supabase: any 
   async function remove(id: string) {
     await supabase.from('knowledge_entries').delete().eq('id', id); load()
   }
+  function startEdit(e: any) {
+    setEditingId(e.id); setEditTitle(e.title); setEditBody(e.content)
+  }
+  function cancelEdit() {
+    setEditingId(null); setEditTitle(''); setEditBody('')
+  }
+  async function saveEdit(id: string) {
+    if (!editTitle.trim() || !editBody.trim()) return
+    setEditSaving(true)
+    await supabase.from('knowledge_entries').update({ title: editTitle.trim(), content: editBody.trim() }).eq('id', id)
+    setEditSaving(false); cancelEdit(); load()
+  }
+  async function saveLocation() {
+    if (!agent?.id) return
+    setLocSaving(true)
+    const updates = {
+      location_enabled: locEnabled,
+      location_lat:     locEnabled && locLat     ? parseFloat(locLat)  : null,
+      location_lng:     locEnabled && locLng     ? parseFloat(locLng)  : null,
+      location_name:    locEnabled && locName    ? locName.trim()    : null,
+      location_address: locEnabled && locAddress ? locAddress.trim() : null,
+    }
+    await supabase.from('agents').update(updates).eq('id', agent.id)
+    try { await fetch(`${SERVER_URL}/tenants/${tenant?.id}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
+    setAgent({ ...agent, ...updates })
+    setLocSaving(false)
+    setLocDirty(false)
+  }
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
       <p className="text-sm" style={{ color: '#64748B' }}>
         Informações que o agente usa para responder: horários, preços, produtos, FAQ, etc.
       </p>
 
+      {/* ── Localização da empresa ── */}
+      <div className="rounded-xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #F1F5F9' }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(34,197,94,.1)' }}>
+              <MapPin className="w-4 h-4" style={{ color: '#16a34a' }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>Localização da empresa</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Envia pin no WhatsApp quando cliente pedir endereço</p>
+            </div>
+          </div>
+          {/* Toggle */}
+          <button
+            onClick={() => { setLocEnabled(v => !v); setLocDirty(true) }}
+            className="relative shrink-0 transition-colors duration-200"
+            style={{
+              width: 44, height: 24, borderRadius: 999,
+              background: locEnabled ? '#22c55e' : '#E2E8F0',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 3,
+              left: locEnabled ? 23 : 3,
+              width: 18, height: 18, borderRadius: '50%',
+              background: '#fff',
+              boxShadow: '0 1px 3px rgba(0,0,0,.2)',
+              transition: 'left .2s',
+            }} />
+          </button>
+        </div>
+
+        {/* Campos */}
+        {locEnabled && (
+          <div className="p-5 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: '#64748B' }}>Latitude</label>
+                <input
+                  className="input"
+                  placeholder="-23.5505"
+                  value={locLat}
+                  onChange={e => { setLocLat(e.target.value); setLocDirty(true) }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block" style={{ color: '#64748B' }}>Longitude</label>
+                <input
+                  className="input"
+                  placeholder="-46.6333"
+                  value={locLng}
+                  onChange={e => { setLocLng(e.target.value); setLocDirty(true) }}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: '#64748B' }}>Nome do local <span style={{ color: '#CBD5E1' }}>(opcional)</span></label>
+              <input
+                className="input"
+                placeholder="Ex: Sano Lab — Loja Principal"
+                value={locName}
+                onChange={e => { setLocName(e.target.value); setLocDirty(true) }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: '#64748B' }}>Endereço <span style={{ color: '#CBD5E1' }}>(opcional)</span></label>
+              <input
+                className="input"
+                placeholder="Ex: Rua das Flores, 123 — São Paulo, SP"
+                value={locAddress}
+                onChange={e => { setLocAddress(e.target.value); setLocDirty(true) }}
+              />
+            </div>
+            <p className="text-xs" style={{ color: '#94A3B8' }}>
+              💡 Para obter as coordenadas, abra{' '}
+              <a href="https://maps.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e' }}>
+                Google Maps
+              </a>
+              , clique com o botão direito no local e copie as coordenadas.
+            </p>
+          </div>
+        )}
+
+        {/* Salvar */}
+        <div className="flex justify-end px-5 py-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+          <button
+            onClick={saveLocation}
+            disabled={locSaving || !locDirty}
+            className="text-xs px-4 py-2 rounded-lg font-medium flex items-center gap-1.5 transition-all duration-200"
+            style={{
+              background:  locDirty ? '#22c55e' : '#F1F5F9',
+              color:       locDirty ? '#fff'    : '#94A3B8',
+              border:      'none',
+              cursor:      locDirty ? 'pointer' : 'default',
+            }}
+          >
+            {locSaving
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando</>
+              : !locDirty
+              ? <><Check className="w-3.5 h-3.5" /> Localização salva</>
+              : 'Salvar localização'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Entradas de conhecimento ── */}
       {entries.length === 0 && (
         <div className="rounded-xl p-8 text-center" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0' }}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3" style={{ background: '#F1F5F9' }}>
@@ -644,29 +890,71 @@ function KnowledgeTab({ tenantId, supabase }: { tenantId: string; supabase: any 
       {entries.map((e) => (
         <div
           key={e.id}
-          className="rounded-xl p-4 transition-opacity"
-          style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', opacity: e.is_active ? 1 : 0.45 }}
+          className="rounded-xl overflow-hidden transition-opacity"
+          style={{ background: '#FFFFFF', border: `1px solid ${editingId === e.id ? '#22c55e' : '#E2E8F0'}`, opacity: e.is_active ? 1 : 0.55 }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium" style={{ color: '#0F172A' }}>{e.title}</p>
-              <p className="text-xs mt-1 line-clamp-2 leading-relaxed" style={{ color: '#64748B' }}>{e.content}</p>
+          {editingId === e.id ? (
+            /* ── modo edição ── */
+            <div className="p-4 space-y-3">
+              <input
+                className="input text-sm"
+                value={editTitle}
+                onChange={ev => setEditTitle(ev.target.value)}
+                placeholder="Título"
+                autoFocus
+              />
+              <textarea
+                className="input text-sm resize-y"
+                style={{ minHeight: 80 }}
+                value={editBody}
+                onChange={ev => setEditBody(ev.target.value)}
+                placeholder="Conteúdo"
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={cancelEdit} className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1">
+                  <X className="w-3 h-3" /> Cancelar
+                </button>
+                <button
+                  onClick={() => saveEdit(e.id)}
+                  disabled={editSaving || !editTitle.trim() || !editBody.trim()}
+                  className="btn-primary text-xs px-3 py-1.5 disabled:opacity-40 flex items-center gap-1"
+                >
+                  {editSaving ? <><Loader2 className="w-3 h-3 animate-spin" /> Salvando</> : <><Check className="w-3 h-3" /> Salvar</>}
+                </button>
+              </div>
             </div>
-            <div className="flex gap-1.5 shrink-0">
-              <button onClick={() => toggle(e.id, e.is_active)} className="btn-outline text-xs px-2.5 py-1">
-                {e.is_active ? 'Desativar' : 'Ativar'}
-              </button>
-              <button
-                onClick={() => remove(e.id)}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{ color: '#94A3B8' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#DC2626'; (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,.08)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#94A3B8'; (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+          ) : (
+            /* ── modo visualização ── */
+            <div className="flex items-start justify-between gap-3 p-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium" style={{ color: '#0F172A' }}>{e.title}</p>
+                <p className="text-xs mt-1 line-clamp-2 leading-relaxed" style={{ color: '#64748B' }}>{e.content}</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button onClick={() => toggle(e.id, e.is_active)} className="btn-outline text-xs px-2.5 py-1">
+                  {e.is_active ? 'Desativar' : 'Ativar'}
+                </button>
+                <button
+                  onClick={() => startEdit(e)}
+                  className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: '#94A3B8' }}
+                  onMouseEnter={ev => { (ev.currentTarget as HTMLElement).style.color = '#22c55e'; (ev.currentTarget as HTMLElement).style.background = 'rgba(34,197,94,.08)' }}
+                  onMouseLeave={ev => { (ev.currentTarget as HTMLElement).style.color = '#94A3B8'; (ev.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => remove(e.id)}
+                  className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: '#94A3B8' }}
+                  onMouseEnter={ev => { (ev.currentTarget as HTMLElement).style.color = '#DC2626'; (ev.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,.08)' }}
+                  onMouseLeave={ev => { (ev.currentTarget as HTMLElement).style.color = '#94A3B8'; (ev.currentTarget as HTMLElement).style.background = 'transparent' }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ))}
 

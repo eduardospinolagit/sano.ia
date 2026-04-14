@@ -59,6 +59,14 @@ export interface Agent {
   followup_max_attempts:    number
   language?:                string
   max_tokens?:              number
+  location_enabled:         boolean
+  location_lat?:            number | null
+  location_lng?:            number | null
+  location_name?:           string | null
+  location_address?:        string | null
+  notification_enabled:     boolean
+  notification_phone?:      string | null
+  notification_fields?:     string[] | null
   created_at:               string
   updated_at:               string
 }
@@ -147,12 +155,16 @@ export interface UserMemory {
 
 export interface InboundEvent {
   tenant_id:     string   // resolvido pelo WASession antes de entrar no pipeline
-  phone:         string
-  type:          'text' | 'audio' | 'image'
+  phone:         string   // número real (ou LID se não foi possível resolver)
+  lid_phone?:    string   // LID original quando phone foi resolvido de um @lid JID
+  push_name?:    string   // nome do contato no WhatsApp (pushName do Baileys)
+  type:          'text' | 'audio' | 'image' | 'location'
   content?:      string
   media_url?:    string
+  location?:     { lat: number; lng: number; name?: string; address?: string }
   wa_message_id?: string
   wa_jid?:       string
+  is_combined?:  boolean   // true quando debounce uniu múltiplas mensagens
 }
 
 // ─── Pipeline Context ─────────────────────────────────────────

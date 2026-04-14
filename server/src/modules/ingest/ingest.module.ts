@@ -14,7 +14,7 @@ export async function ingest(
   tenant: Tenant
 ): Promise<PipelineContext> {
   // 1. Usuário (único por phone + tenant_id)
-  const user = await getOrCreateUser(event.phone, tenant.id)
+  const user = await getOrCreateUser(event.phone, tenant.id, event.push_name, event.lid_phone)
 
   if (user.is_blocked) throw new Error(`Usuário ${event.phone} bloqueado`)
 
@@ -43,8 +43,33 @@ export async function ingest(
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-async function getOrCreateUser(phone: string, tenantId: string): Promise<User> {
+async function getOrCreateUser(phone: string, tenantId: string, pushName?: string, lidPhone?: string): Promise<User> {
   const now = new Date().toISOString()
+
+  // Se o LID foi resolvido para um número real, migra o usuário existente com o LID
+  if (lidPhone && lidPhone !== phone) {
+    const { data: lidUser } = await supabase
+      .from('users')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('phone', lidPhone)
+      .maybeSingle()
+
+    if (lidUser) {
+      const updates: any = { phone, last_seen_at: now }
+      if (pushName) updates.display_name = pushName
+      const { data: updated } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', (lidUser as any).id)
+        .select('*')
+        .single()
+      if (updated) {
+        console.log(`[ingest] LID ${lidPhone} migrado → phone ${phone} (user ${(lidUser as any).id})`)
+        return updated as User
+      }
+    }
+  }
 
   const { data, error } = await supabase
     .from('users')
@@ -52,6 +77,7 @@ async function getOrCreateUser(phone: string, tenantId: string): Promise<User> {
       {
         tenant_id:     tenantId,
         phone,
+        ...(pushName ? { display_name: pushName } : {}),
         origin:        'whatsapp_inbound',
         is_blocked:    false,
         first_seen_at: now,
@@ -64,7 +90,6 @@ async function getOrCreateUser(phone: string, tenantId: string): Promise<User> {
 
   if (error || !data) throw new Error(`Falha ao criar/atualizar usuário: ${error?.message}`)
 
-  // Atualiza last_seen sem sobrescrever first_seen_at do upsert
   await supabase.from('users').update({ last_seen_at: now }).eq('id', (data as any).id)
 
   return data as User
@@ -112,6 +137,17 @@ async function persistInbound(
   conversationId: string,
   tenantId:       string
 ): Promise<Message> {
+  // Idempotente: se já existe (retry do watchdog), retorna o registro existente
+  if (event.wa_message_id) {
+    const { data: existing } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .contains('metadata', { wa_message_id: event.wa_message_id })
+      .maybeSingle()
+    if (existing) return existing as Message
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .insert({

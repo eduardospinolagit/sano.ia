@@ -18,14 +18,14 @@ import type { Agent, DelayProfile, ActiveHoursConfig, DelayResult } from '../../
 // ─── Delay profile padrão (quando companion não tem configurado) ──
 
 const DEFAULT_PROFILE: DelayProfile = {
-  text_short_min_s:  5,
-  text_short_max_s:  30,
-  text_long_min_s:   10,
-  text_long_max_s:   30,
-  audio_min_s:       10,
-  audio_max_s:       30,
-  busy_extra_min_s:  5,
-  busy_extra_max_s:  15,
+  text_short_min_s:  3,
+  text_short_max_s:  10,
+  text_long_min_s:   5,
+  text_long_max_s:   10,
+  audio_min_s:       5,
+  audio_max_s:       10,
+  busy_extra_min_s:  3,
+  busy_extra_max_s:  8,
   jitter_pct:        0.05,
 }
 

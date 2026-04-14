@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant }     from '@/hooks/use-tenant'
-import { MessageSquare, Search } from 'lucide-react'
+import { MessageSquare, Search, UserCheck, Bot } from 'lucide-react'
 
 type Filter = 'all' | 'active' | 'paused' | 'closed'
 
@@ -17,21 +17,42 @@ const FILTERS: { value: Filter; label: string }[] = [
 export default function ConversationsPage() {
   const { tenant }            = useTenant()
   const supabase              = createClient()
-  const [convs,   setConvs]   = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState<Filter>('all')
-  const [search,  setSearch]  = useState('')
+  const [convs,      setConvs]      = useState<any[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [filter,     setFilter]     = useState<Filter>('all')
+  const [search,     setSearch]     = useState('')
+  const [togglingId, setTogglingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!tenant) return
     load()
   }, [tenant, filter])
 
+  async function togglePause(conv: any) {
+    if (togglingId) return
+    const nextStatus = conv.status === 'paused' ? 'active' : 'paused'
+    setTogglingId(conv.id)
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/tenants/${tenant!.id}/conversations/${conv.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setConvs(prev => prev.map(c => c.id === conv.id ? { ...c, status: nextStatus } : c))
+    } catch (err) {
+      console.error('[togglePause]', err)
+      alert('Não foi possível atualizar a conversa. Verifique se o servidor está rodando.')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   async function load() {
     setLoading(true)
     let q = supabase
       .from('conversations')
-      .select('id, status, last_message_at, relationship_level, user:user_id(phone, display_name)')
+      .select('id, status, last_message_at, relationship_level, user:users!user_id(phone, display_name)')
       .eq('tenant_id', tenant!.id)
       .order('last_message_at', { ascending: false })
       .limit(100)
@@ -52,15 +73,10 @@ export default function ConversationsPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-5 animate-fade-in">
 
-      {/* Header */}
-      <div>
-        <h1 className="font-heading text-2xl font-semibold" style={{ color: '#0F172A' }}>
-          Conversas
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
-          {loading ? 'Carregando...' : `${convs.length} conversa${convs.length !== 1 ? 's' : ''}`}
-        </p>
-      </div>
+      {/* Contagem */}
+      <p className="text-sm" style={{ color: '#64748B' }}>
+        {loading ? 'Carregando...' : `${convs.length} conversa${convs.length !== 1 ? 's' : ''}`}
+      </p>
 
       {/* Search + Filters */}
       <div className="flex items-center gap-3">
@@ -131,7 +147,7 @@ export default function ConversationsPage() {
         >
           {filtered.map((conv, idx) => {
             const user  = conv.user as any
-            const name  = user?.display_name ?? user?.phone ?? conv.id.slice(0, 8)
+            const name  = user?.display_name ?? formatPhone(user?.phone) ?? conv.id.slice(0, 8)
             const level = conv.relationship_level ?? 0
 
             return (
@@ -161,7 +177,7 @@ export default function ConversationsPage() {
                   </div>
                 </div>
 
-                {/* Level + Status */}
+                {/* Level + Status + Ação */}
                 <div className="flex items-center gap-3 shrink-0">
                   {level > 0 && (
                     <div className="flex gap-0.5">
@@ -175,8 +191,26 @@ export default function ConversationsPage() {
                     </div>
                   )}
                   {conv.status === 'active' && <span className="badge badge-green">Ativa</span>}
-                  {conv.status === 'paused' && <span className="badge badge-yellow">Pausada</span>}
+                  {conv.status === 'paused' && <span className="badge badge-yellow">Atendimento humano</span>}
                   {conv.status === 'closed' && <span className="badge badge-gray">Fechada</span>}
+
+                  {conv.status !== 'closed' && (
+                    <button
+                      onClick={e => { e.stopPropagation(); togglePause(conv) }}
+                      disabled={togglingId === conv.id}
+                      title={conv.status === 'paused' ? 'Devolver ao agente' : 'Assumir conversa'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer disabled:opacity-50"
+                      style={conv.status === 'paused'
+                        ? { background: 'rgba(34,197,94,.1)', color: '#16a34a', border: '1px solid rgba(34,197,94,.2)' }
+                        : { background: 'rgba(245,158,11,.1)', color: '#b45309', border: '1px solid rgba(245,158,11,.2)' }
+                      }
+                    >
+                      {conv.status === 'paused'
+                        ? <><Bot className="w-3.5 h-3.5" /> Devolver ao agente</>
+                        : <><UserCheck className="w-3.5 h-3.5" /> Assumir</>
+                      }
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -200,6 +234,22 @@ function EmptyState({ icon: Icon, title, desc }: { icon: any; title: string; des
       <p className="text-xs mt-1 max-w-xs leading-relaxed" style={{ color: '#64748B' }}>{desc}</p>
     </div>
   )
+}
+
+function formatPhone(phone?: string): string | undefined {
+  if (!phone) return undefined
+  // LID do WhatsApp: número com mais de 13 dígitos — mostra como ID
+  if (phone.length > 13) return `#${phone.slice(-8)}`
+  // Número brasileiro: 55 + DDD (2) + número (8 ou 9)
+  if (phone.startsWith('55') && phone.length >= 12) {
+    const ddd = phone.slice(2, 4)
+    const num = phone.slice(4)
+    const formatted = num.length === 9
+      ? `${num.slice(0, 5)}-${num.slice(5)}`
+      : `${num.slice(0, 4)}-${num.slice(4)}`
+    return `(${ddd}) ${formatted}`
+  }
+  return phone
 }
 
 function timeAgo(iso: string): string {

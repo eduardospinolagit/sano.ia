@@ -145,6 +145,44 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     return
   }
 
+  // ── POST /tenants/:id/wa/send-location ───────────────────────
+  const sendLocationMatch = url.match(/^\/tenants\/([^/]+)\/wa\/send-location$/)
+  if (method === 'POST' && sendLocationMatch) {
+    const tenantId = sendLocationMatch[1]
+    const body = await parseBody(req)
+    const { phone, lat, lng, name, address } = body
+
+    if (!phone || lat == null || lng == null) {
+      return json(res, 400, { error: 'phone, lat e lng são obrigatórios' })
+    }
+
+    const runtime = getRuntime(tenantId)
+    if (!runtime) return json(res, 404, { error: 'Tenant não encontrado ou inativo' })
+
+    await runtime.waSession.sendLocation(phone, Number(lat), Number(lng), name, address)
+    json(res, 200, { message: 'Localização enviada' })
+    return
+  }
+
+  // ── PATCH /tenants/:id/conversations/:convId/status ─────────
+  const convStatusMatch = url.match(/^\/tenants\/([^/]+)\/conversations\/([^/]+)\/status$/)
+  if (method === 'PATCH' && convStatusMatch) {
+    const [, tenantId, convId] = convStatusMatch
+    const body = await parseBody(req)
+    const { status } = body
+    if (!['active', 'paused', 'closed'].includes(status)) {
+      return json(res, 400, { error: 'status inválido' })
+    }
+    const { error } = await supabase
+      .from('conversations')
+      .update({ status })
+      .eq('id', convId)
+      .eq('tenant_id', tenantId)
+    if (error) return json(res, 500, { error: error.message })
+    json(res, 200, { ok: true, status })
+    return
+  }
+
   // ── POST /tenants/:id/agent/reload ────────────────────────────
   const agentReloadMatch = url.match(/^\/tenants\/([^/]+)\/agent\/reload$/)
   if (method === 'POST' && agentReloadMatch) {

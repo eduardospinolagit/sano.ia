@@ -33,17 +33,54 @@ import {
   runGuardrails,
   guardEmptyResponse,
 } from '../modules/ops/guardrails.engine'
+import { detectBusinessEvent, notifyOwner } from '../modules/notifications/notification.module'
 
 import type { InboundEvent, BehaviorProfile, EngagementProfile, SafetyProfile } from '../types'
 import type { TenantRuntime } from '../tenant/tenant-manager'
 import type { NLDContext }    from '../modules/nld/nld_runtime'
 
+// ─── Detecção de pedido de localização ───────────────────────
+
+const LOCATION_KEYWORDS = [
+  'localização', 'localizacao', 'endereço', 'endereco', 'onde fica',
+  'onde vocês ficam', 'onde voces ficam', 'como chegar', 'mapa',
+  'pin', 'maps', 'google maps', 'sua localização', 'sua localizacao',
+  'loja fica', 'loja está', 'loja esta', 'fica onde', 'onde estão',
+]
+
+function isLocationRequest(text: string): boolean {
+  const lower = text.toLowerCase()
+  return LOCATION_KEYWORDS.some(kw => lower.includes(kw))
+}
+
 // ─── Sleep (23:00–08:00) ──────────────────────────────────────
 
 function isSleepTime(agent: { active_hours_config?: any }): boolean {
-  // Se o agent tem horário configurado, respeita; senão, usa 23–8 como padrão
-  const h = new Date().getHours()
-  return h >= 23 || h < 8
+  const config = agent.active_hours_config
+
+  // Se configurado como 24h ou sem configuração de horário, sempre ativo
+  if (!config || config.always_on === true || config.enabled === false) return false
+
+  const now    = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+  const h      = now.getHours()
+  const m      = now.getMinutes()
+  const dayMap = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday']
+  const day    = dayMap[now.getDay()]
+  const dayConfig = config[day] ?? config.days?.[day]
+
+  // Se tem config por dia
+  if (dayConfig) {
+    if (!dayConfig.available) return true
+    const [startH, startM] = (dayConfig.start ?? '00:00').split(':').map(Number)
+    const [endH,   endM]   = (dayConfig.end   ?? '23:59').split(':').map(Number)
+    const cur   = h * 60 + m
+    const start = startH * 60 + startM
+    const end   = endH   * 60 + endM
+    return cur < start || cur >= end
+  }
+
+  // Fallback: nunca bloqueia se tem config mas não tem o dia
+  return false
 }
 
 // ─── Transcrição ──────────────────────────────────────────────
@@ -127,7 +164,7 @@ export async function runPipeline(
       return
     }
 
-    // ── 2. TRANSCRIÇÃO ─────────────────────────────────────────
+    // ── 2. TRANSCRIÇÃO / NORMALIZAÇÃO ──────────────────────────
     if (event.type === 'audio') {
       const stt = await transcribeAudio(event.media_url, ctx.inboundMessage.id, ctx.user.id, tenant.id)
       ctx.textContent = stt.text
@@ -135,6 +172,15 @@ export async function runPipeline(
         await waSession.sendText(ctx.user.phone, ctx.textContent, ctx.wa_jid)
         return
       }
+    }
+
+    if (event.type === 'location' && event.location) {
+      const { lat, lng, name, address } = event.location
+      const parts = [`[O usuário enviou uma localização: latitude ${lat}, longitude ${lng}`]
+      if (name)    parts.push(`Nome: ${name}`)
+      if (address) parts.push(`Endereço: ${address}`)
+      parts.push(`Link: https://maps.google.com/?q=${lat},${lng}]`)
+      ctx.textContent = parts.join('. ')
     }
 
     if (!ctx.textContent?.trim()) return
@@ -185,10 +231,32 @@ export async function runPipeline(
     }
 
     try {
-      await runNLD(llmResult.text, nldCtx, ctx.user.phone, waSession.sendText.bind(waSession), ctx.wa_jid, ctx.wa_message_id)
+      await runNLD(llmResult.text, nldCtx, ctx.user.phone, waSession.sendText.bind(waSession), ctx.wa_jid, event.is_combined ? ctx.wa_message_id : undefined)
     } catch (err) {
       console.error(`[PIPELINE:${tenant.slug}] Delivery falhou:`, err)
       try { await waSession.sendText(ctx.user.phone, llmResult.text, ctx.wa_jid) } catch { /* perdido */ }
+    }
+
+    // ── 7b. LOCATION PIN ───────────────────────────────────────
+    if (
+      agent.location_enabled &&
+      agent.location_lat != null &&
+      agent.location_lng != null &&
+      isLocationRequest(ctx.textContent)
+    ) {
+      try {
+        await waSession.sendLocation(
+          ctx.user.phone,
+          agent.location_lat,
+          agent.location_lng,
+          agent.location_name  ?? undefined,
+          agent.location_address ?? undefined,
+          ctx.wa_jid
+        )
+        console.log(`[PIPELINE:${tenant.slug}] Location pin enviado para ${ctx.user.phone}`)
+      } catch (err) {
+        console.error(`[PIPELINE:${tenant.slug}] Falha ao enviar location pin:`, err)
+      }
     }
 
     // Persiste outbound
@@ -214,7 +282,14 @@ export async function runPipeline(
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', ctx.conversation.id)
 
-    // ── 8. MEMORY async ────────────────────────────────────────
+    // ── 8. NOTIFICAÇÃO async ───────────────────────────────────
+    if (agent.notification_enabled && agent.notification_phone) {
+      detectBusinessEvent(messages, llmResult.text)
+        .then(result => notifyOwner(agent, ctx.user.phone, (ctx.user as any).display_name, result, waSession, messages))
+        .catch(() => {})
+    }
+
+    // ── 9. MEMORY async ────────────────────────────────────────
     updateMemoryAsync(ctx, agent.id, tenant.id).catch(() => {})
 
     const pipelineMs = Date.now() - pipelineStart

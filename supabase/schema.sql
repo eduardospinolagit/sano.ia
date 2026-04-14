@@ -72,6 +72,14 @@ create table agents (
   followup_delay_hours    int not null default 24,
   followup_messages       jsonb default '[]',
   followup_max_attempts   int not null default 3,
+  location_enabled        boolean not null default false,
+  location_lat            double precision,
+  location_lng            double precision,
+  location_name           text,
+  location_address        text,
+  notification_enabled    boolean not null default false,
+  notification_phone      text,
+  notification_fields     jsonb not null default '["cliente","resumo"]',
   created_at              timestamptz not null default now(),
   updated_at              timestamptz not null default now()
 );

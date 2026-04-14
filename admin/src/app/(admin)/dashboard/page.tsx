@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
+import { createClient }  from '@/lib/supabase/client'
 import { useTenant }     from '@/hooks/use-tenant'
 import { ArrowRight }    from 'lucide-react'
 import { useRouter }     from 'next/navigation'
@@ -36,12 +36,12 @@ export default function DashboardPage() {
       supabase.from('conversations').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant!.id).eq('status', 'active'),
       supabase.from('conversations')
-        .select('id, status, last_message_at, user:user_id(phone, display_name)')
+        .select('id, status, last_message_at, user:users!user_id(phone, display_name)')
         .eq('tenant_id', tenant!.id)
         .order('last_message_at', { ascending: false })
         .limit(8),
       // Leads quentes: relationship_level >= 4
-      supabase.from('conversations').select('id, relationship_level, status, user:user_id(phone, display_name)')
+      supabase.from('conversations').select('id, relationship_level, status, user:users!user_id(phone, display_name)')
         .eq('tenant_id', tenant!.id).gte('relationship_level', 4)
         .order('relationship_level', { ascending: false }).limit(20),
       // Leads em andamento: relationship_level 2-3
@@ -79,17 +79,8 @@ export default function DashboardPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-10 animate-fade-in">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-xl font-semibold" style={{ color: '#0F172A' }}>
-            Dashboard
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>
-            Visão geral de hoje
-          </p>
-        </div>
-
+      {/* Badge status */}
+      <div className="flex justify-end">
         {waConnected ? (
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg"

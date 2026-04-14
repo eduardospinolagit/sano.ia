@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
-import { useTenant } from '@/hooks/use-tenant'
+import { QRCodeSVG }  from 'qrcode.react'
+import { useTenant }  from '@/hooks/use-tenant'
 import { Smartphone, CheckCircle2, Loader2, WifiOff, RefreshCw } from 'lucide-react'
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
@@ -62,11 +62,8 @@ export default function WhatsAppPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
 
-      {/* Header */}
-      <div>
-        <h1 className="font-heading text-2xl font-semibold" style={{ color: '#0F172A' }}>WhatsApp</h1>
-        <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>Conecte o número que o agente vai usar</p>
-      </div>
+      {/* Subtitle */}
+      <p className="text-sm" style={{ color: '#64748B' }}>Conecte o número que o agente vai usar</p>
 
       {/* Status */}
       <section

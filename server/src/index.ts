@@ -10,6 +10,8 @@
 import 'dotenv/config'
 import { startHttpServer } from './http/server'
 import { initAllTenants }  from './tenant/tenant-manager'
+import { startWatchdog }   from './jobs/watchdog.job'
+import { startFollowupJob } from './jobs/followup.job'
 
 function assertEnv(keys: string[]): void {
   const missing = keys.filter(k => !process.env[k])
@@ -25,6 +27,8 @@ async function boot(): Promise<void> {
 
   startHttpServer()
   await initAllTenants()
+  startWatchdog()
+  startFollowupJob()
 
   console.log('[BOOT] Sano.ia pronto.')
 }

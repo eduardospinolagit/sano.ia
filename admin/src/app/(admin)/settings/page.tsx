@@ -19,14 +19,7 @@ export default function SettingsPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6 animate-fade-in">
 
-      <div>
-        <h1 className="font-heading text-2xl font-semibold" style={{ color: '#0F172A' }}>
-          Configurações
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>
-          Informações da sua conta e workspace
-        </p>
-      </div>
+      <p className="text-sm" style={{ color: '#64748B' }}>Informações da sua conta e workspace</p>
 
       {/* Conta */}
       <section
