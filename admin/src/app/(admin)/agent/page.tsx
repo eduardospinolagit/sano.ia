@@ -63,36 +63,41 @@ export default function AgentPage() {
   }, [initialAgent])
 
   async function saveAgent() {
-    if (!agent) return
+    if (!agent || !tenant) return
     setSaving(true)
     try {
-      const { error } = await supabase.from('agents').update({
-        name:                  agent.name,
-        persona_prompt:        agent.persona_prompt ?? agent.persona,
-        system_rules:          agent.system_rules   ?? agent.system_prompt,
-        response_style:        agent.response_style,
-        temperature:           agent.temperature,
-        objective:             agent.objective,
-        objective_meta:        agent.objective_meta,
-        followup_enabled:      agent.followup_enabled,
-        followup_delay_hours:  agent.followup_delay_hours,
-        followup_messages:     agent.followup_messages,
-        followup_max_attempts: agent.followup_max_attempts,
-        active_hours_config:   agent.active_hours_config,
-        notification_enabled:  agent.notification_enabled  ?? false,
-        notification_phone:    agent.notification_phone   ?? null,
-        notification_fields:   agent.notification_fields  ?? ['cliente', 'resumo'],
-      }).eq('id', agent.id)
+      const res = await fetch(`${SERVER_URL}/tenants/${tenant.id}/agent`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:                  agent.name,
+          persona_prompt:        agent.persona_prompt ?? agent.persona,
+          system_rules:          agent.system_rules   ?? agent.system_prompt,
+          response_style:        agent.response_style,
+          temperature:           agent.temperature,
+          objective:             agent.objective,
+          objective_meta:        agent.objective_meta,
+          followup_enabled:      agent.followup_enabled,
+          followup_delay_hours:  agent.followup_delay_hours,
+          followup_messages:     agent.followup_messages,
+          followup_max_attempts: agent.followup_max_attempts,
+          active_hours_config:   agent.active_hours_config,
+          notification_enabled:  agent.notification_enabled  ?? false,
+          notification_phone:    agent.notification_phone   ?? null,
+          notification_fields:   agent.notification_fields  ?? ['cliente', 'resumo'],
+        }),
+      })
 
-      if (error) {
-        console.error('[saveAgent] Supabase error:', error)
-        alert(`Erro ao salvar: ${error.message}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Erro ao salvar: ${body.error ?? res.status}`)
         return
       }
 
-      try { await fetch(`${SERVER_URL}/tenants/${tenant?.id}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
       setSaved(true)
       setTimeout(() => setSaved(false), 2_000)
+    } catch {
+      alert('Não foi possível conectar ao servidor. Verifique se está rodando.')
     } finally { setSaving(false) }
   }
 

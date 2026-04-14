@@ -183,6 +183,36 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
     return
   }
 
+  // ── PATCH /tenants/:id/agent — salva config do agente (service key) ──
+  const agentSaveMatch = url.match(/^\/tenants\/([^/]+)\/agent$/)
+  if (method === 'PATCH' && agentSaveMatch) {
+    const tenantId = agentSaveMatch[1]
+    const body = await parseBody(req)
+
+    const ALLOWED = [
+      'name', 'persona_prompt', 'system_rules', 'response_style',
+      'temperature', 'objective', 'objective_meta',
+      'followup_enabled', 'followup_delay_hours', 'followup_messages', 'followup_max_attempts',
+      'active_hours_config',
+      'notification_enabled', 'notification_phone', 'notification_fields',
+    ]
+    const updates: Record<string, any> = {}
+    for (const key of ALLOWED) {
+      if (key in body) updates[key] = body[key]
+    }
+
+    const { error } = await supabase
+      .from('agents')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+
+    if (error) return json(res, 500, { error: error.message })
+
+    await reloadAgent(tenantId)
+    json(res, 200, { ok: true })
+    return
+  }
+
   // ── POST /tenants/:id/agent/reload ────────────────────────────
   const agentReloadMatch = url.match(/^\/tenants\/([^/]+)\/agent\/reload$/)
   if (method === 'POST' && agentReloadMatch) {
