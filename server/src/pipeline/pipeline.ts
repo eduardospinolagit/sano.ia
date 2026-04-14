@@ -28,7 +28,7 @@ import { calculateDelay }   from '../modules/delay/delay.module'
 import { deliver }          from '../modules/delivery/delivery.module'
 import { runNLD }           from '../modules/nld/nld_runtime'
 import {
-  acquireConversationLock,
+  waitForConversationLock,
   releaseConversationLock,
   runGuardrails,
   guardEmptyResponse,
@@ -159,8 +159,9 @@ export async function runPipeline(
       return
     }
 
-    if (!acquireConversationLock(ctx.conversation.id)) {
-      console.warn(`[PIPELINE:${tenant.slug}] Conversa ${ctx.conversation.id} já em processamento`)
+    const lockAcquired = await waitForConversationLock(ctx.conversation.id)
+    if (!lockAcquired) {
+      console.warn(`[PIPELINE:${tenant.slug}] Conversa ${ctx.conversation.id} timeout no lock — descartando`)
       return
     }
 

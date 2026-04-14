@@ -27,6 +27,20 @@ export function releaseConversationLock(conversationId: string): void {
   _locks.delete(conversationId)
 }
 
+/** Aguarda até o lock da conversa ficar livre e o adquire.
+ *  Retorna false se exceder maxWaitMs (conversa travada por TTL). */
+export async function waitForConversationLock(
+  conversationId: string,
+  maxWaitMs = 90_000,
+): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs
+  while (Date.now() < deadline) {
+    if (acquireConversationLock(conversationId)) return true
+    await new Promise(r => setTimeout(r, 400))
+  }
+  return false
+}
+
 // ─── Guardrails ───────────────────────────────────────────────
 
 export async function runGuardrails(input: {
