@@ -59,7 +59,17 @@ export default function ConversationsPage() {
 
     if (filter !== 'all') q = q.eq('status', filter)
     const { data } = await q
-    setConvs(data ?? [])
+
+    // dedup: mantém só a conversa mais recente por usuário
+    const seen = new Set<string>()
+    const deduped = (data ?? []).filter(c => {
+      const key = c.user?.phone ?? c.id
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    setConvs(deduped)
     setLoading(false)
   }
 
