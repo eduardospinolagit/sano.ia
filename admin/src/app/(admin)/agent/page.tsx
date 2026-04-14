@@ -757,7 +757,7 @@ function KnowledgeTab({ tenantId, supabase, agent, setAgent }: {
       location_address: locEnabled && locAddress ? locAddress.trim() : null,
     }
     await supabase.from('agents').update(updates).eq('id', agent.id)
-    try { await fetch(`${SERVER_URL}/tenants/${tenant?.id}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
+    try { await fetch(`${SERVER_URL}/tenants/${tenantId}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
     setAgent({ ...agent, ...updates })
     setLocSaving(false)
     setLocDirty(false)
