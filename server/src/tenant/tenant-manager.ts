@@ -177,14 +177,21 @@ async function flushDebounce(runtime: TenantRuntime, events: InboundEvent[]): Pr
     return
   }
 
-  const textParts = events
-    .filter(e => e.type === 'text' && e.content?.trim())
-    .map(e => e.content!)
+  const hasNonText = events.some(e => e.type !== 'text')
 
-  if (textParts.length === 0) {
-    await runPipeline(events[events.length - 1], runtime)
+  if (hasNonText) {
+    // Áudios/imagens não podem ser fundidos — processa cada um em sequência
+    console.log(`[PIPELINE:${runtime.tenant.slug}] Debounce: ${events.length} eventos (áudio/misto) de ${events[0].phone} — processando em sequência`)
+    for (const event of events) {
+      await runPipeline({ ...event, is_combined: events.length > 1 }, runtime)
+    }
     return
   }
+
+  // Todos são texto — combina em um único pipeline
+  const textParts = events
+    .filter(e => e.content?.trim())
+    .map(e => e.content!)
 
   const last = events[events.length - 1]
   const combined: InboundEvent = { ...last, type: 'text', content: textParts.join('\n'), is_combined: true }
