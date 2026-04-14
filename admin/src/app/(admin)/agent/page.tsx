@@ -6,7 +6,7 @@ import { useTenant }     from '@/hooks/use-tenant'
 import { Check, CheckCircle2, Loader2, Plus, Trash2, BookOpen, Smartphone, Settings2, ArrowLeft, MapPin, Pencil, X } from 'lucide-react'
 import Link         from 'next/link'
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
+const SERVER_URL = (process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000').trim()
 const S = { background: '#FFFFFF', border: '1px solid #E2E8F0' }
 
 const TABS = ['Identidade', 'Objetivo', 'Comportamento', 'Conhecimento', 'Follow-up', 'Horários'] as const

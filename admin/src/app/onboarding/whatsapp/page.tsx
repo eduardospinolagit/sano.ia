@@ -9,7 +9,7 @@ import { createClient }                      from '@/lib/supabase/client'
 import { OnboardingShell }                   from '../_components/onboarding-shell'
 import { Loader2, Smartphone, CheckCircle2 } from 'lucide-react'
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
+const SERVER_URL = (process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000').trim()
 
 type WAStatus = 'disconnected' | 'connecting' | 'qr_pending' | 'connected'
 

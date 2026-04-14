@@ -5,7 +5,7 @@ import { QRCodeSVG }  from 'qrcode.react'
 import { useTenant }  from '@/hooks/use-tenant'
 import { Smartphone, CheckCircle2, Loader2, WifiOff, RefreshCw } from 'lucide-react'
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
+const SERVER_URL = (process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000').trim()
 
 type WAStatus = 'disconnected' | 'connecting' | 'qr_pending' | 'connected'
 

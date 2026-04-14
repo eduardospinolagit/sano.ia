@@ -10,7 +10,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { createClient }        from '@/lib/supabase/client'
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3002'
+const SERVER_URL = (process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000').trim()
 
 export interface TenantData {
   id:     string

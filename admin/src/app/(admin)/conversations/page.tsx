@@ -33,7 +33,7 @@ export default function ConversationsPage() {
     const nextStatus = conv.status === 'paused' ? 'active' : 'paused'
     setTogglingId(conv.id)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/tenants/${tenant!.id}/conversations/${conv.id}/status`, {
+      const res = await fetch(`${(process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000').trim()}/tenants/${tenant!.id}/conversations/${conv.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus }),
