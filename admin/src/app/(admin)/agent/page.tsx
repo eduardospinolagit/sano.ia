@@ -66,7 +66,7 @@ export default function AgentPage() {
     if (!agent) return
     setSaving(true)
     try {
-      await supabase.from('agents').update({
+      const { error } = await supabase.from('agents').update({
         name:                  agent.name,
         persona_prompt:        agent.persona_prompt ?? agent.persona,
         system_rules:          agent.system_rules   ?? agent.system_prompt,
@@ -83,6 +83,13 @@ export default function AgentPage() {
         notification_phone:    agent.notification_phone   ?? null,
         notification_fields:   agent.notification_fields  ?? ['cliente', 'resumo'],
       }).eq('id', agent.id)
+
+      if (error) {
+        console.error('[saveAgent] Supabase error:', error)
+        alert(`Erro ao salvar: ${error.message}`)
+        return
+      }
+
       try { await fetch(`${SERVER_URL}/tenants/${tenant?.id}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
       setSaved(true)
       setTimeout(() => setSaved(false), 2_000)

@@ -147,7 +147,8 @@ export async function reloadAgent(tenantId: string): Promise<void> {
 
   if (agent) {
     runtime.agent = agent as Agent
-    console.log(`[TENANT] ${runtime.tenant.slug}: agent recarregado`)
+    const preview = (agent.persona_prompt ?? '').slice(0, 80).replace(/\n/g, ' ')
+    console.log(`[TENANT] ${runtime.tenant.slug}: agent recarregado — persona="${preview}..."`)
   }
 }
 
