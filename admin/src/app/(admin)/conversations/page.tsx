@@ -64,7 +64,8 @@ export default function ConversationsPage() {
     // e mantém só a conversa mais recente por número real
     const seen = new Set<string>()
     const deduped = (data ?? []).filter(c => {
-      const phone = c.user?.phone ?? ''
+      const user  = (Array.isArray(c.user) ? c.user[0] : c.user) as { phone?: string; display_name?: string } | null
+      const phone = user?.phone ?? ''
       if (phone.length > 13) return false   // descarta LID
       const key = phone || c.id
       if (seen.has(key)) return false
