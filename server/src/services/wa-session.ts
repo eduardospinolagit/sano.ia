@@ -23,6 +23,8 @@ const MSG_CACHE_MAX = 300
 
 // ─── Classe WASession ─────────────────────────────────────────
 
+interface PendingMsg { phone: string; text: string; waJid?: string }
+
 export class WASession {
   private socket:       any | null = null
   private status:       WAStatus   = 'disconnected'
@@ -30,6 +32,7 @@ export class WASession {
   private emitter:      EventEmitter  = new EventEmitter()
   private msgCache =    new Map<string, any>()
   private autoReconnect = false   // só reconecta se explicitamente habilitado
+  private retryQueue:   PendingMsg[] = []
 
   constructor(
     public readonly tenantId: string,
@@ -114,6 +117,8 @@ export class WASession {
         this.qrCode = null
         console.log(`[WA:${this.tenantId}] Conectado! receivedPendingNotifications=${update.receivedPendingNotifications}`)
         this.emitter.emit('connected')
+        // Aguarda 2s para conexão estabilizar antes de reenviar mensagens pendentes
+        setTimeout(() => this.flushRetryQueue().catch(console.error), 2_000)
       }
     })
 
@@ -142,6 +147,30 @@ export class WASession {
         this.emitter.emit('message', event)
       }
     })
+  }
+
+  // ─── Fila de reentrega ───────────────────────────────────────
+
+  /** Enfileira uma mensagem para reenvio após próxima reconexão */
+  queueForRetry(phone: string, text: string, waJid?: string): void {
+    this.retryQueue.push({ phone, text, waJid })
+    console.log(`[WA:${this.tenantId}] Mensagem enfileirada para reentrega (${this.retryQueue.length} pendente(s))`)
+  }
+
+  private async flushRetryQueue(): Promise<void> {
+    if (this.retryQueue.length === 0) return
+    const queue = [...this.retryQueue]
+    this.retryQueue = []
+    console.log(`[WA:${this.tenantId}] Reenviando ${queue.length} mensagem(ns) pendente(s)...`)
+    for (const item of queue) {
+      try {
+        await this.sendText(item.phone, item.text, item.waJid)
+        console.log(`[WA:${this.tenantId}] Reentrega OK → ${item.phone}`)
+      } catch (err) {
+        console.error(`[WA:${this.tenantId}] Reentrega falhou → ${item.phone}:`, err)
+        this.retryQueue.push(item)  // volta para a fila, tenta na próxima reconexão
+      }
+    }
   }
 
   disconnect(): void {
@@ -295,6 +324,33 @@ export class WASession {
         ...baseEvent,
         type:    'image',
         content: msgContent.imageMessage.caption ?? '',
+      }
+    }
+
+    if (msgContent?.documentMessage) {
+      const doc      = msgContent.documentMessage
+      const mimetype = (doc.mimetype as string) ?? ''
+      const filename = (doc.fileName as string) ?? 'documento'
+
+      // Baixa o arquivo para disco — o pipeline faz a extração de texto (igual ao áudio)
+      let docPath: string | undefined
+      try {
+        const { downloadMediaMessage } = await import('@whiskeysockets/baileys') as any
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer
+        docPath = path.join(os.tmpdir(), `sano_doc_${msg.key.id}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`)
+        fs.writeFileSync(docPath, buffer)
+      } catch (err) {
+        console.error(`[WA:${this.tenantId}] Falha ao baixar documento "${filename}":`, err)
+      }
+
+      console.log(`[WA:${this.tenantId}] Documento recebido: "${filename}" (${mimetype || 'tipo desconhecido'})`)
+
+      return {
+        ...baseEvent,
+        type:          'document',
+        content:       `[Documento: ${filename}]`,
+        media_url:     docPath,
+        document_name: filename,
       }
     }
 

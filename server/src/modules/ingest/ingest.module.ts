@@ -157,12 +157,17 @@ async function persistInbound(
       agent_id:        agentId,
       direction:       'inbound',
       role:            'user',
-      type:            event.type,
+      // 'document' não existe na constraint do banco — salva como 'text' (conteúdo já extraído)
+      type:            event.type === 'document' ? 'text' : event.type,
       content:         event.content ?? null,
       media_url:       event.media_url ?? null,
       status:          'received',
-      metadata: (event.wa_message_id || event.wa_jid)
-        ? { wa_message_id: event.wa_message_id ?? null, wa_jid: event.wa_jid ?? null }
+      metadata: (event.wa_message_id || event.wa_jid || event.document_name)
+        ? {
+            ...(event.wa_message_id ? { wa_message_id: event.wa_message_id } : {}),
+            ...(event.wa_jid        ? { wa_jid:        event.wa_jid        } : {}),
+            ...(event.document_name ? { document_name: event.document_name } : {}),
+          }
         : null,
     })
     .select('*')

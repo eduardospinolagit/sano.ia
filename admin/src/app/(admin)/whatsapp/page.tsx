@@ -51,6 +51,15 @@ export default function WhatsAppPage() {
     } finally { setLoading(false) }
   }
 
+  async function handleReset() {
+    if (!tenant) return
+    setLoading(true)
+    try {
+      await fetch(`${SERVER_URL}/tenants/${tenant.id}/wa/reset`, { method: 'POST' })
+      setWaStatus('disconnected'); setQrCode(null); setPhone(null)
+    } finally { setLoading(false) }
+  }
+
   const statusCfg = {
     connected:    { label: 'Conectado',     color: '#16a34a', dot: '#22c55e' },
     qr_pending:   { label: 'Aguardando QR', color: '#b45309', dot: '#F59E0B' },
@@ -93,11 +102,16 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-2">
             {waStatus === 'disconnected' && (
-              <button onClick={handleConnect} disabled={loading} className="btn-primary">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Conectar'}
-              </button>
+              <>
+                <button onClick={handleConnect} disabled={loading} className="btn-primary">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Conectar'}
+                </button>
+                <button onClick={handleReset} disabled={loading} className="btn-ghost text-xs">
+                  Resetar sessão
+                </button>
+              </>
             )}
             {waStatus === 'connected' && (
               <button onClick={handleDisconnect} disabled={loading} className="btn-outline">

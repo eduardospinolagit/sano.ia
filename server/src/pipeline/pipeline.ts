@@ -83,6 +83,121 @@ function isSleepTime(agent: { active_hours_config?: any }): boolean {
   return false
 }
 
+// ─── Processamento de documentos ─────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse: (buf: Buffer, opts?: any) => Promise<{ text: string }> = require('pdf-parse')
+
+async function processDocument(
+  mediaUrl:     string | undefined,
+  documentName: string | undefined,
+  messageId:    string,
+  tenantId:     string
+): Promise<{ text: string; usedFallback: boolean }> {
+  const filename = documentName ?? 'documento'
+
+  if (!mediaUrl || !fs.existsSync(mediaUrl)) {
+    return { text: `[O cliente enviou o documento "${filename}" mas não foi possível acessá-lo]`, usedFallback: false }
+  }
+
+  try {
+    const buffer = fs.readFileSync(mediaUrl)
+    const lname  = filename.toLowerCase()
+
+    // ── Texto puro ──────────────────────────────────────────────
+    if (lname.endsWith('.txt')) {
+      const text = buffer.toString('utf-8').replace(/\s+/g, ' ').trim()
+      return { text: `[O cliente enviou o documento "${filename}":\n${text}]`, usedFallback: false }
+    }
+
+    // ── PDF ─────────────────────────────────────────────────────
+    if (lname.endsWith('.pdf')) {
+      // 1. Tenta extração de texto nativo (rápido, gratuito)
+      const parsed  = await pdfParse(buffer)
+      const extracted = parsed.text?.replace(/\s+/g, ' ').trim()
+
+      if (extracted && extracted.length > 20) {
+        await supabase.from('messages').update({ status: 'processed' }).eq('id', messageId)
+        console.log(`[PIPELINE:${tenantId}] PDF "${filename}" — texto nativo extraído (${extracted.length} chars)`)
+        return { text: `[O cliente enviou o documento "${filename}":\n${extracted}]`, usedFallback: false }
+      }
+
+      // 2. PDF escaneado — OCR via pdfjs-dist + OpenAI Vision
+      console.log(`[PIPELINE:${tenantId}] PDF "${filename}" sem texto nativo — tentando OCR via Vision`)
+      const ocrText = await ocrPdfVision(buffer, filename, tenantId)
+
+      if (ocrText) {
+        await supabase.from('messages').update({ status: 'processed' }).eq('id', messageId)
+        console.log(`[PIPELINE:${tenantId}] PDF "${filename}" — OCR Vision OK (${ocrText.length} chars)`)
+        return { text: `[O cliente enviou o documento "${filename}":\n${ocrText}]`, usedFallback: false }
+      }
+
+      // 3. OCR falhou — pede foto
+      return {
+        text: `[O cliente enviou o PDF "${filename}", mas o arquivo é uma imagem escaneada e não foi possível ler o conteúdo automaticamente. Informe ao cliente de forma gentil e peça que tire uma foto clara do documento e envie pelo WhatsApp para que você possa ajudá-lo.]`,
+        usedFallback: false,
+      }
+    }
+
+    // ── Outro formato ────────────────────────────────────────────
+    return {
+      text: `[O cliente enviou o arquivo "${filename}". Informe gentilmente que ainda não consegue ler esse tipo de arquivo e pergunte o que ele precisa.]`,
+      usedFallback: false,
+    }
+
+  } catch (err) {
+    console.error(`[PIPELINE:${tenantId}] Erro ao processar documento "${filename}":`, err)
+    return { text: `[O cliente enviou o documento "${filename}" mas ocorreu um erro ao processá-lo. Responda normalmente e pergunte o que ele precisa.]`, usedFallback: false }
+  } finally {
+    if (mediaUrl && fs.existsSync(mediaUrl)) fs.unlinkSync(mediaUrl)
+  }
+}
+
+async function ocrPdfVision(buffer: Buffer, filename: string, tenantId: string): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createCanvas } = require('canvas')
+
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+    const pdfDoc      = await loadingTask.promise
+    const maxPages    = Math.min(pdfDoc.numPages, 3)
+
+    const allText: string[] = []
+
+    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+      const page     = await pdfDoc.getPage(pageNum)
+      const viewport = page.getViewport({ scale: 2.0 })
+      const canvas   = createCanvas(viewport.width, viewport.height)
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+
+      const pngBase64 = canvas.toBuffer('image/png').toString('base64')
+
+      const response = await openai.chat.completions.create({
+        model:      'gpt-4o',
+        max_tokens: 1500,
+        messages:   [{
+          role:    'user',
+          content: [
+            { type: 'text',      text: 'Extraia todo o texto deste documento. Retorne apenas o texto extraído, sem comentários.' },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${pngBase64}`, detail: 'high' } },
+          ] as any,
+        }],
+      })
+
+      const pageText = response.choices[0]?.message?.content?.trim()
+      if (pageText) allText.push(pageText)
+    }
+
+    return allText.length > 0 ? allText.join('\n\n') : null
+  } catch (err) {
+    console.error(`[PIPELINE:${tenantId}] OCR Vision falhou para "${filename}":`, err)
+    return null
+  }
+}
+
 // ─── Transcrição ──────────────────────────────────────────────
 
 async function transcribeAudio(
@@ -175,6 +290,11 @@ export async function runPipeline(
       }
     }
 
+    if (event.type === 'document') {
+      const doc = await processDocument(event.media_url, event.document_name, ctx.inboundMessage.id, tenant.id)
+      ctx.textContent = doc.text
+    }
+
     if (event.type === 'location' && event.location) {
       const { lat, lng, name, address } = event.location
       const parts = [`[O usuário enviou uma localização: latitude ${lat}, longitude ${lng}`]
@@ -219,7 +339,7 @@ export async function runPipeline(
     }
 
     // ── 6. DELAY ───────────────────────────────────────────────
-    const baseDelay  = calculateDelay('text', ctx.textContent.length, agent as any, technicalMs)
+    const baseDelay  = calculateDelay('text', ctx.textContent.length, agent, technicalMs)
     const remainingMs = Math.max(0, baseDelay.behavioral_ms - technicalMs)
     await new Promise(r => setTimeout(r, remainingMs))
 
@@ -235,7 +355,12 @@ export async function runPipeline(
       await runNLD(llmResult.text, nldCtx, ctx.user.phone, waSession.sendText.bind(waSession), ctx.wa_jid, event.is_combined ? ctx.wa_message_id : undefined)
     } catch (err) {
       console.error(`[PIPELINE:${tenant.slug}] Delivery falhou:`, err)
-      try { await waSession.sendText(ctx.user.phone, llmResult.text, ctx.wa_jid) } catch { /* perdido */ }
+      try {
+        await waSession.sendText(ctx.user.phone, llmResult.text, ctx.wa_jid)
+      } catch {
+        // WA ainda desconectado — enfileira para reenvio pós-reconexão
+        waSession.queueForRetry(ctx.user.phone, llmResult.text, ctx.wa_jid)
+      }
     }
 
     // ── 7b. LOCATION PIN ───────────────────────────────────────
@@ -285,13 +410,14 @@ export async function runPipeline(
 
     // ── 8. NOTIFICAÇÃO async ───────────────────────────────────
     if (agent.notification_enabled && agent.notification_phone) {
-      detectBusinessEvent(messages, llmResult.text)
-        .then(result => notifyOwner(agent, ctx.user.phone, (ctx.user as any).display_name, result, waSession, messages))
-        .catch(() => {})
+      const msgHistory = messages as any
+      detectBusinessEvent(msgHistory, llmResult.text)
+        .then(result => notifyOwner(agent, ctx.user.phone, (ctx.user as any).display_name, result, waSession, msgHistory))
+        .catch(err => console.error(`[PIPELINE:${tenant.slug}] Notificação falhou:`, err))
     }
 
     // ── 9. MEMORY async ────────────────────────────────────────
-    updateMemoryAsync(ctx, agent.id, tenant.id).catch(() => {})
+    updateMemoryAsync(ctx, agent.id, tenant.id).catch(err => console.error(`[PIPELINE:${tenant.slug}] Memory update falhou:`, err))
 
     const pipelineMs = Date.now() - pipelineStart
     console.log(`[PIPELINE:${tenant.slug}] OK ${pipelineMs}ms | delay=${remainingMs}ms`)

@@ -60,14 +60,34 @@ export default function ConversationsPage() {
     if (filter !== 'all') q = q.eq('status', filter)
     const { data } = await q
 
-    // dedup: remove LIDs (phone >13 dígitos são IDs internos do WhatsApp, não números reais)
-    // e mantém só a conversa mais recente por número real
-    const seen = new Set<string>()
-    const deduped = (data ?? []).filter(c => {
+    // dedup: LIDs (phone >13 dígitos) só são descartados quando já existe
+    // uma conversa com número real para a mesma pessoa (pelo display_name).
+    // Se o contato só tem LID, a conversa aparece normalmente.
+    const rawData = data ?? []
+
+    // Mapeia quais nomes já têm conversa com número real
+    const nameHasRealPhone = new Map<string, boolean>()
+    for (const c of rawData) {
       const user  = (Array.isArray(c.user) ? c.user[0] : c.user) as { phone?: string; display_name?: string } | null
       const phone = user?.phone ?? ''
-      if (phone.length > 13) return false   // descarta LID
-      const key = phone || c.id
+      const name  = user?.display_name?.toLowerCase()
+      if (name && phone.length > 0 && phone.length <= 13) {
+        nameHasRealPhone.set(name, true)
+      }
+    }
+
+    const seen = new Set<string>()
+    const deduped = rawData.filter(c => {
+      const user  = (Array.isArray(c.user) ? c.user[0] : c.user) as { phone?: string; display_name?: string } | null
+      const phone = user?.phone ?? ''
+      const name  = user?.display_name?.toLowerCase()
+      const isLID = phone.length > 13
+
+      // Descarta LID apenas se essa pessoa já tem conversa com número real
+      if (isLID && name && nameHasRealPhone.get(name)) return false
+
+      // Dedup: número real → chave = phone; LID → chave = nome ou id
+      const key = isLID ? (name || c.id) : (phone || c.id)
       if (seen.has(key)) return false
       seen.add(key)
       return true

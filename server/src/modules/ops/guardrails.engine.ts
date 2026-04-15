@@ -10,6 +10,14 @@ import type { GuardrailsResult } from '../../types'
 const LOCK_TTL_MS    = 120_000
 const _locks = new Map<string, number>()
 
+// Varre e remove locks expirados a cada 10 minutos para evitar acúmulo em memória
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, ts] of _locks) {
+    if (now - ts > LOCK_TTL_MS) _locks.delete(id)
+  }
+}, 10 * 60 * 1000)
+
 export function acquireConversationLock(conversationId: string): boolean {
   const existing = _locks.get(conversationId)
   if (existing) {

@@ -126,7 +126,7 @@ export interface Message {
   agent_id:        string
   direction:       'inbound' | 'outbound'
   role:            'user' | 'assistant' | 'system'
-  type:            'text' | 'audio' | 'image'
+  type:            'text' | 'audio' | 'image' | 'document'
   content?:        string | null
   media_url?:      string | null
   transcription?:  string | null
@@ -158,9 +158,10 @@ export interface InboundEvent {
   phone:         string   // número real (ou LID se não foi possível resolver)
   lid_phone?:    string   // LID original quando phone foi resolvido de um @lid JID
   push_name?:    string   // nome do contato no WhatsApp (pushName do Baileys)
-  type:          'text' | 'audio' | 'image' | 'location'
+  type:          'text' | 'audio' | 'image' | 'location' | 'document'
   content?:      string
   media_url?:    string
+  document_name?: string   // nome original do arquivo quando type === 'document'
   location?:     { lat: number; lng: number; name?: string; address?: string }
   wa_message_id?: string
   wa_jid?:       string

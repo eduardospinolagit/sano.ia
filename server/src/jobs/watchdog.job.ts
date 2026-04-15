@@ -16,7 +16,8 @@ const MIN_AGE_MS  = 2 * 60 * 1000   // mensagem deve ter ao menos 2 min (evita c
 const MAX_AGE_MS  = 30 * 60 * 1000  // ignora mensagens com mais de 30 min (muito antigas)
 
 export function startWatchdog(): void {
-  setTimeout(runWatchdog, INTERVAL_MS)   // primeira execução após 3 min (dá tempo do boot)
+  // Usa apenas setInterval — começa após INTERVAL_MS (tempo para o boot estabilizar)
+  // Não combinar com setTimeout ou a primeira execução ficaria duplicada
   setInterval(runWatchdog, INTERVAL_MS)
   console.log('[WATCHDOG] Iniciado — verificação a cada 3min')
 }

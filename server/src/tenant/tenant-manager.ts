@@ -137,7 +137,7 @@ export async function reloadAgent(tenantId: string): Promise<void> {
   const runtime = _runtimes.get(tenantId)
   if (!runtime) return
 
-  const { data: agent } = await supabase
+  const { data: agent, error } = await supabase
     .from('agents')
     .select('*')
     .eq('tenant_id', tenantId)
@@ -145,10 +145,19 @@ export async function reloadAgent(tenantId: string): Promise<void> {
     .limit(1)
     .single()
 
+  if (error) {
+    console.error(`[TENANT] ${runtime.tenant.slug}: falha ao recarregar agent — ${error.message}`)
+    return
+  }
+
   if (agent) {
+    const prevPersona = runtime.agent.persona_prompt
     runtime.agent = agent as Agent
-    const preview = (agent.persona_prompt ?? '').slice(0, 80).replace(/\n/g, ' ')
-    console.log(`[TENANT] ${runtime.tenant.slug}: agent recarregado — persona="${preview}..."`)
+    // Só loga quando a persona de fato mudou (evita ruído nos logs do refresh periódico)
+    if ((agent.persona_prompt ?? '') !== (prevPersona ?? '')) {
+      const preview = (agent.persona_prompt ?? '').slice(0, 80).replace(/\n/g, ' ')
+      console.log(`[TENANT] ${runtime.tenant.slug}: agent atualizado — persona="${preview}..."`)
+    }
   }
 }
 
@@ -220,4 +229,17 @@ export async function initAllTenants(): Promise<void> {
     await bootstrapTenant(tenant as Tenant)
   }
   console.log('[TENANT] Todos os tenants inicializados')
+}
+
+// ─── Refresh periódico dos agents (fallback para quando o reload HTTP falha) ──
+
+const AGENT_REFRESH_INTERVAL_MS = 60_000
+
+export function startAgentRefreshLoop(): void {
+  setInterval(async () => {
+    for (const [tenantId] of _runtimes) {
+      await reloadAgent(tenantId)
+    }
+  }, AGENT_REFRESH_INTERVAL_MS)
+  console.log(`[TENANT] Agent refresh loop iniciado (intervalo: ${AGENT_REFRESH_INTERVAL_MS / 1000}s)`)
 }

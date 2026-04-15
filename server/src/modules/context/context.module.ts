@@ -58,7 +58,9 @@ async function getShortTerm(conversationId: string): Promise<ChatCompletionMessa
 
   return data.reverse().map(m => ({
     role:    m.role as 'user' | 'assistant',
-    content: m.type === 'audio' ? `[áudio]: ${m.content}` : (m.content ?? ''),
+    content: m.type === 'audio'    ? `[áudio]: ${m.content}`
+           : m.type === 'document' ? (m.content ?? '[documento]')
+           : (m.content ?? ''),
   }))
 }
 

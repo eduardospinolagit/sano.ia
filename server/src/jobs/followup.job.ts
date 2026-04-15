@@ -18,7 +18,6 @@ import { getAllRuntimes } from '../tenant/tenant-manager'
 const INTERVAL_MS = 30 * 60 * 1000   // verifica a cada 30 min
 
 export function startFollowupJob(): void {
-  setTimeout(runFollowup, INTERVAL_MS)
   setInterval(runFollowup, INTERVAL_MS)
   console.log('[FOLLOWUP] Iniciado — verificação a cada 30min')
 }

@@ -124,7 +124,8 @@ export function useTenant(): TenantContext {
 
       const agData = ag ? (ag as AgentData) : null
       setAgent(agData)
-      writeCache(td, agData, waStatus)
+      // waStatus não é conhecido aqui — o polling atualiza o cache separadamente
+      writeCache(td, agData, null)
 
     } finally {
       setLoading(false)

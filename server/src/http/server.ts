@@ -16,6 +16,8 @@
  */
 
 import http from 'http'
+import path from 'path'
+import fs   from 'fs'
 import supabase from '../services/supabase.service'
 import {
   bootstrapTenant,
@@ -29,13 +31,22 @@ const PORT = parseInt(process.env.PORT ?? '3002', 10)
 
 // ─── Helpers ──────────────────────────────────────────────────
 
+const BODY_LIMIT = 512 * 1024  // 512 KB
+
 function parseBody(req: http.IncomingMessage): Promise<any> {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     let body = ''
-    req.on('data', chunk => { body += chunk })
+    req.on('data', (chunk: Buffer) => {
+      body += chunk
+      if (Buffer.byteLength(body) > BODY_LIMIT) {
+        req.destroy()
+        reject(new Error('Payload muito grande'))
+      }
+    })
     req.on('end', () => {
       try { resolve(JSON.parse(body)) } catch { resolve({}) }
     })
+    req.on('error', reject)
   })
 }
 
@@ -142,6 +153,30 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
       .update({ wa_status: 'disconnected' })
       .eq('tenant_id', tenantId)
     json(res, 200, { message: 'Desconectado' })
+    return
+  }
+
+  // ── POST /tenants/:id/wa/reset ────────────────────────────────
+  // Apaga credenciais WA (necessário após logout/401) e reinicia para aguardar novo QR
+  const waResetMatch = url.match(/^\/tenants\/([^/]+)\/wa\/reset$/)
+  if (method === 'POST' && waResetMatch) {
+    const tenantId = waResetMatch[1]
+    await teardownTenant(tenantId)
+
+    // Apaga creds.json para forçar novo QR na próxima conexão
+    const authDir  = path.join(process.cwd(), 'auth_info', `tenant_${tenantId}`)
+    const credsFile = path.join(authDir, 'creds.json')
+    if (fs.existsSync(credsFile)) fs.unlinkSync(credsFile)
+
+    await supabase.from('tenant_wa_sessions')
+      .update({ wa_status: 'disconnected', qr_expires_at: null })
+      .eq('tenant_id', tenantId)
+
+    // Re-bootstrap sem credenciais — aguarda connect manual para gerar QR
+    const { data: tenant } = await supabase.from('tenants').select('*').eq('id', tenantId).single()
+    if (tenant) bootstrapTenant(tenant as Tenant).catch(console.error)
+
+    json(res, 200, { message: 'Sessão resetada — clique em Conectar para gerar novo QR' })
     return
   }
 

@@ -9,7 +9,7 @@
 
 import 'dotenv/config'
 import { startHttpServer } from './http/server'
-import { initAllTenants }  from './tenant/tenant-manager'
+import { initAllTenants, startAgentRefreshLoop }  from './tenant/tenant-manager'
 import { startWatchdog }   from './jobs/watchdog.job'
 import { startFollowupJob } from './jobs/followup.job'
 
@@ -29,6 +29,7 @@ async function boot(): Promise<void> {
   await initAllTenants()
   startWatchdog()
   startFollowupJob()
+  startAgentRefreshLoop()
 
   console.log('[BOOT] Sano.ia pronto.')
 }

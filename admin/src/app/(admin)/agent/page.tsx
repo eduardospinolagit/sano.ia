@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTenant }     from '@/hooks/use-tenant'
 import { Check, CheckCircle2, Loader2, Plus, Trash2, BookOpen, Smartphone, Settings2, ArrowLeft, MapPin, Pencil, X } from 'lucide-react'
@@ -53,6 +53,7 @@ export default function AgentPage() {
   const [agent,  setAgent]  = useState(initialAgent)
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setAgent(initialAgent)
@@ -66,7 +67,7 @@ export default function AgentPage() {
     if (!agent || !tenant) return
     setSaving(true)
     try {
-      const res = await fetch(`${SERVER_URL}/tenants/${tenant.id}/agent`, {
+      const res = await fetch(`/api/agent/${tenant.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,8 +95,9 @@ export default function AgentPage() {
         return
       }
 
+      if (savedTimer.current) clearTimeout(savedTimer.current)
       setSaved(true)
-      setTimeout(() => setSaved(false), 2_000)
+      savedTimer.current = setTimeout(() => setSaved(false), 2_000)
     } catch {
       alert('Não foi possível conectar ao servidor. Verifique se está rodando.')
     } finally { setSaving(false) }
@@ -768,11 +770,24 @@ function KnowledgeTab({ tenantId, supabase, agent, setAgent }: {
       location_name:    locEnabled && locName    ? locName.trim()    : null,
       location_address: locEnabled && locAddress ? locAddress.trim() : null,
     }
-    await supabase.from('agents').update(updates).eq('id', agent.id)
-    try { await fetch(`${SERVER_URL}/tenants/${tenantId}/agent/reload`, { method: 'POST' }) } catch { /* servidor offline */ }
-    setAgent({ ...agent, ...updates })
-    setLocSaving(false)
-    setLocDirty(false)
+    try {
+      const res = await fetch(`/api/agent/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(`Erro ao salvar localização: ${body.error ?? res.status}`)
+        return
+      }
+      setAgent({ ...agent, ...updates })
+      setLocDirty(false)
+    } catch {
+      alert('Não foi possível conectar ao servidor.')
+    } finally {
+      setLocSaving(false)
+    }
   }
 
   return (
