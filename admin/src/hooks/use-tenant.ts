@@ -33,10 +33,11 @@ export interface AgentData {
 }
 
 interface TenantContext {
-  tenant:   TenantData | null
-  agent:    AgentData  | null
-  waStatus: string     | null
-  loading:  boolean
+  tenant:          TenantData | null
+  agent:           AgentData  | null
+  waStatus:        string     | null
+  loading:         boolean
+  isAuthenticated: boolean
 }
 
 const CACHE_KEY = 'sano_tenant_cache'
@@ -64,10 +65,11 @@ export function useTenant(): TenantContext {
   const tenantRef = useRef<string | null>(null)
   const userIdRef = useRef<string | null>(null)
 
-  const [tenant,   setTenant]   = useState<TenantData | null>(null)
-  const [agent,    setAgent]    = useState<AgentData | null>(null)
-  const [waStatus, setWaStatus] = useState<string | null>(null)
-  const [loading,  setLoading]  = useState(true)
+  const [tenant,          setTenant]          = useState<TenantData | null>(null)
+  const [agent,           setAgent]           = useState<AgentData | null>(null)
+  const [waStatus,        setWaStatus]        = useState<string | null>(null)
+  const [loading,         setLoading]         = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   useEffect(() => {
     load()
@@ -101,9 +103,11 @@ export function useTenant(): TenantContext {
         sessionStorage.removeItem(CACHE_KEY)
         setTenant(null)
         setAgent(null)
+        setIsAuthenticated(false)
         return
       }
 
+      setIsAuthenticated(true)
       userIdRef.current = user.id
 
       // Carrega cache apenas se pertencer ao usuário atual
@@ -160,5 +164,5 @@ export function useTenant(): TenantContext {
     writeCache(userId, td, agData, null)
   }
 
-  return { tenant, agent, waStatus, loading }
+  return { tenant, agent, waStatus, loading, isAuthenticated }
 }

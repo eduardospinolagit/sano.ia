@@ -23,13 +23,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router   = useRouter()
   const supabase = createClient()
-  const { tenant, waStatus, loading } = useTenant()
+  const { tenant, waStatus, loading, isAuthenticated } = useTenant()
 
   useEffect(() => {
-    if (!loading && !tenant) {
+    if (loading) return
+    if (!isAuthenticated) {
       router.replace('/login')
+    } else if (!tenant) {
+      router.replace('/onboarding')
     }
-  }, [loading, tenant])
+  }, [loading, isAuthenticated, tenant])
 
   async function handleLogout() {
     sessionStorage.removeItem('sano_tenant_cache')
