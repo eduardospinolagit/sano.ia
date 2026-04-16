@@ -131,13 +131,31 @@ export function useTenant(): TenantContext {
   }
 
   async function loadFresh(userId: string, email: string) {
-    const { data: member } = await supabase
+    let { data: member } = await supabase
       .from('tenant_members')
       .select('tenant_id, tenants(*)')
       .eq('user_email', email)
       .not('accepted_at', 'is', null)
       .limit(1)
       .maybeSingle()
+
+    // Novo usuário sem tenant: provisiona automaticamente
+    if (!member?.tenants) {
+      try {
+        const res = await fetch('/api/tenants/provision', { method: 'POST' })
+        if (res.ok) {
+          // Recarrega após criar
+          const { data: fresh } = await supabase
+            .from('tenant_members')
+            .select('tenant_id, tenants(*)')
+            .eq('user_email', email)
+            .not('accepted_at', 'is', null)
+            .limit(1)
+            .maybeSingle()
+          member = fresh
+        }
+      } catch { /* provision falhou */ }
+    }
 
     if (!member?.tenants) {
       sessionStorage.removeItem(CACHE_KEY)
