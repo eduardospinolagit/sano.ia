@@ -41,20 +41,28 @@ interface TenantContext {
 
 const CACHE_KEY = 'sano_tenant_cache'
 
-function readCache(): { tenant: TenantData; agent: AgentData | null; waStatus: string | null } | null {
+function readCache(userId: string): { tenant: TenantData; agent: AgentData | null; waStatus: string | null } | null {
   try {
     const raw = sessionStorage.getItem(CACHE_KEY)
-    return raw ? JSON.parse(raw) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Invalida cache se for de outro usuário
+    if (parsed.userId !== userId) {
+      sessionStorage.removeItem(CACHE_KEY)
+      return null
+    }
+    return parsed
   } catch { return null }
 }
 
-function writeCache(tenant: TenantData, agent: AgentData | null, waStatus: string | null) {
-  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ tenant, agent, waStatus })) } catch {}
+function writeCache(userId: string, tenant: TenantData, agent: AgentData | null, waStatus: string | null) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ userId, tenant, agent, waStatus })) } catch {}
 }
 
 export function useTenant(): TenantContext {
   const supabase  = createClient()
   const tenantRef = useRef<string | null>(null)
+  const userIdRef = useRef<string | null>(null)
 
   const [tenant,   setTenant]   = useState<TenantData | null>(null)
   const [agent,    setAgent]    = useState<AgentData | null>(null)
@@ -62,14 +70,6 @@ export function useTenant(): TenantContext {
   const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
-    const cached = readCache()
-    if (cached) {
-      setTenant(cached.tenant)
-      setAgent(cached.agent)
-      if (cached.waStatus) setWaStatus(cached.waStatus)
-      tenantRef.current = cached.tenant.id
-      setLoading(false)
-    }
     load()
   }, [])
 
@@ -86,10 +86,10 @@ export function useTenant(): TenantContext {
     try {
       const res  = await fetch(`${SERVER_URL}/tenants/${tenantId}/wa/status`)
       const data = await res.json()
-      if (data.wa_status) {
+      if (data.wa_status && userIdRef.current) {
         setWaStatus(data.wa_status)
-        const cached = readCache()
-        if (cached) writeCache(cached.tenant, cached.agent, data.wa_status)
+        const cached = readCache(userIdRef.current)
+        if (cached) writeCache(userIdRef.current, cached.tenant, cached.agent, data.wa_status)
       }
     } catch { /* servidor offline */ }
   }
@@ -97,39 +97,67 @@ export function useTenant(): TenantContext {
   async function load() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        sessionStorage.removeItem(CACHE_KEY)
+        setTenant(null)
+        setAgent(null)
+        return
+      }
 
-      const { data: member } = await supabase
-        .from('tenant_members')
-        .select('tenant_id, tenants(*)')
-        .eq('user_email', user.email!)
-        .not('accepted_at', 'is', null)
-        .limit(1)
-        .maybeSingle()
+      userIdRef.current = user.id
 
-      if (!member?.tenants) return
+      // Carrega cache apenas se pertencer ao usuário atual
+      const cached = readCache(user.id)
+      if (cached) {
+        setTenant(cached.tenant)
+        setAgent(cached.agent)
+        if (cached.waStatus) setWaStatus(cached.waStatus)
+        tenantRef.current = cached.tenant.id
+        setLoading(false)
+        // Revalida em background sem mostrar loading
+        loadFresh(user.id, user.email!)
+        return
+      }
 
-      const t  = member.tenants as any
-      const td = { id: t.id, name: t.name, slug: t.slug, status: t.status }
-      tenantRef.current = t.id
-      setTenant(td)
-
-      const { data: ag } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('tenant_id', t.id)
-        .eq('is_active', true)
-        .limit(1)
-        .maybeSingle()
-
-      const agData = ag ? (ag as AgentData) : null
-      setAgent(agData)
-      // waStatus não é conhecido aqui — o polling atualiza o cache separadamente
-      writeCache(td, agData, null)
+      await loadFresh(user.id, user.email!)
 
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadFresh(userId: string, email: string) {
+    const { data: member } = await supabase
+      .from('tenant_members')
+      .select('tenant_id, tenants(*)')
+      .eq('user_email', email)
+      .not('accepted_at', 'is', null)
+      .limit(1)
+      .maybeSingle()
+
+    if (!member?.tenants) {
+      sessionStorage.removeItem(CACHE_KEY)
+      setTenant(null)
+      setAgent(null)
+      return
+    }
+
+    const t  = member.tenants as any
+    const td = { id: t.id, name: t.name, slug: t.slug, status: t.status }
+    tenantRef.current = t.id
+    setTenant(td)
+
+    const { data: ag } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('tenant_id', t.id)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+
+    const agData = ag ? (ag as AgentData) : null
+    setAgent(agData)
+    writeCache(userId, td, agData, null)
   }
 
   return { tenant, agent, waStatus, loading }

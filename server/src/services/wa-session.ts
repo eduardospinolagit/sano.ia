@@ -37,7 +37,9 @@ export class WASession {
   constructor(
     public readonly tenantId: string,
     private readonly authDir: string
-  ) {}
+  ) {
+    this.loadRetryQueue()
+  }
 
   // ─── Conexão ─────────────────────────────────────────────────
 
@@ -154,6 +156,7 @@ export class WASession {
   /** Enfileira uma mensagem para reenvio após próxima reconexão */
   queueForRetry(phone: string, text: string, waJid?: string): void {
     this.retryQueue.push({ phone, text, waJid })
+    this.saveRetryQueue()
     console.log(`[WA:${this.tenantId}] Mensagem enfileirada para reentrega (${this.retryQueue.length} pendente(s))`)
   }
 
@@ -161,6 +164,7 @@ export class WASession {
     if (this.retryQueue.length === 0) return
     const queue = [...this.retryQueue]
     this.retryQueue = []
+    this.saveRetryQueue()  // limpa o arquivo imediatamente
     console.log(`[WA:${this.tenantId}] Reenviando ${queue.length} mensagem(ns) pendente(s)...`)
     for (const item of queue) {
       try {
@@ -171,6 +175,27 @@ export class WASession {
         this.retryQueue.push(item)  // volta para a fila, tenta na próxima reconexão
       }
     }
+    if (this.retryQueue.length > 0) this.saveRetryQueue()  // persiste os que ainda falharam
+  }
+
+  private saveRetryQueue(): void {
+    try {
+      if (!fs.existsSync(this.authDir)) return
+      fs.writeFileSync(path.join(this.authDir, 'retry_queue.json'), JSON.stringify(this.retryQueue))
+    } catch { /* ignora */ }
+  }
+
+  private loadRetryQueue(): void {
+    try {
+      const file = path.join(this.authDir, 'retry_queue.json')
+      if (fs.existsSync(file)) {
+        const data = JSON.parse(fs.readFileSync(file, 'utf-8'))
+        if (Array.isArray(data) && data.length > 0) {
+          this.retryQueue = data
+          console.log(`[WA:${this.tenantId}] ${this.retryQueue.length} mensagem(ns) pendente(s) carregada(s) do disco`)
+        }
+      }
+    } catch { /* ignora */ }
   }
 
   disconnect(): void {
@@ -320,10 +345,20 @@ export class WASession {
     }
 
     if (msgContent?.imageMessage) {
+      let imgPath: string | undefined
+      try {
+        const { downloadMediaMessage } = await import('@whiskeysockets/baileys') as any
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}) as Buffer
+        imgPath = path.join(os.tmpdir(), `sano_img_${msg.key.id}.jpg`)
+        fs.writeFileSync(imgPath, buffer)
+      } catch (err) {
+        console.error(`[WA:${this.tenantId}] Falha ao baixar imagem:`, err)
+      }
       return {
         ...baseEvent,
-        type:    'image',
-        content: msgContent.imageMessage.caption ?? '',
+        type:      'image',
+        content:   msgContent.imageMessage.caption ?? '',
+        media_url: imgPath,
       }
     }
 

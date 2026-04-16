@@ -43,7 +43,7 @@ async function checkTenant(runtime: any): Promise<void> {
   // Busca mensagens inbound recebidas dentro da janela de tempo
   const { data: candidates } = await supabase
     .from('messages')
-    .select('id, conversation_id, content, type, metadata, created_at, user_id')
+    .select('id, conversation_id, content, type, media_url, status, metadata, created_at, user_id')
     .eq('tenant_id', tenant.id)
     .eq('direction', 'inbound')
     .gte('created_at', maxAgo)
@@ -91,11 +91,33 @@ async function checkTenant(runtime: any): Promise<void> {
 
     console.log(`[WATCHDOG:${tenant.slug}] Sem resposta detectada — conv=${msg.conversation_id.slice(0,8)} user=${user.phone} msg=${msg.id.slice(0,8)}`)
 
+    // Detecta documentos pelo metadata (salvos como type 'text' por restrição do banco)
+    const isDocument = !!(msg.metadata?.document_name)
+    let eventType: InboundEvent['type']  = 'text'
+    let eventContent: string             = msg.content ?? ''
+    let eventMediaUrl: string | undefined
+    let eventDocName:  string | undefined
+
+    if (isDocument) {
+      if (msg.status === 'processed') {
+        // Texto já extraído e salvo no banco — usa diretamente
+        eventType    = 'text'
+        eventContent = msg.content ?? ''
+      } else {
+        // Extração ainda não ocorreu — tenta reprocessar (arquivo temp pode ter sido apagado)
+        eventType    = 'document'
+        eventMediaUrl = msg.media_url ?? undefined
+        eventDocName  = msg.metadata.document_name
+      }
+    }
+
     const event: InboundEvent = {
       tenant_id:     tenant.id,
       phone:         user.phone,
-      type:          msg.type ?? 'text',
-      content:       msg.content ?? '',
+      type:          eventType,
+      content:       eventContent,
+      media_url:     eventMediaUrl,
+      document_name: eventDocName,
       wa_jid:        msg.metadata?.wa_jid  ?? undefined,
       wa_message_id: msg.metadata?.wa_message_id ?? undefined,
     }

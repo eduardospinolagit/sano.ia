@@ -34,6 +34,7 @@ import {
   guardEmptyResponse,
 } from '../modules/ops/guardrails.engine'
 import { detectBusinessEvent, notifyOwner } from '../modules/notifications/notification.module'
+import { extractAndSaveMemories }           from '../modules/memory/memory.module'
 
 import type { InboundEvent, BehaviorProfile, EngagementProfile, SafetyProfile } from '../types'
 import type { TenantRuntime } from '../tenant/tenant-manager'
@@ -198,6 +199,55 @@ async function ocrPdfVision(buffer: Buffer, filename: string, tenantId: string):
   }
 }
 
+// ─── Descrição de imagens via Vision ─────────────────────────
+
+async function describeImage(
+  mediaUrl:  string | undefined,
+  caption:   string,
+  tenantId:  string
+): Promise<string> {
+  if (!mediaUrl || !fs.existsSync(mediaUrl)) {
+    return caption
+      ? `[O usuário enviou uma imagem com legenda: "${caption}"]`
+      : '[O usuário enviou uma imagem, mas não foi possível carregá-la]'
+  }
+
+  try {
+    const buffer  = fs.readFileSync(mediaUrl)
+    const base64  = buffer.toString('base64')
+
+    const response = await openai.chat.completions.create({
+      model:      'gpt-4o',
+      max_tokens: 500,
+      messages:   [{
+        role:    'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Descreva o conteúdo desta imagem em português de forma objetiva e detalhada. Se houver texto visível, transcreva-o.',
+          },
+          {
+            type:      'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' },
+          },
+        ] as any,
+      }],
+    })
+
+    const desc = response.choices[0]?.message?.content?.trim() ?? 'imagem recebida'
+    return caption
+      ? `[O usuário enviou uma imagem com legenda "${caption}": ${desc}]`
+      : `[O usuário enviou uma imagem: ${desc}]`
+  } catch (err) {
+    console.error(`[PIPELINE:${tenantId}] Vision falhou:`, err)
+    return caption
+      ? `[O usuário enviou uma imagem com legenda: "${caption}"]`
+      : '[O usuário enviou uma imagem que não pôde ser analisada]'
+  } finally {
+    if (fs.existsSync(mediaUrl!)) fs.unlinkSync(mediaUrl!)
+  }
+}
+
 // ─── Transcrição ──────────────────────────────────────────────
 
 async function transcribeAudio(
@@ -230,12 +280,43 @@ async function transcribeAudio(
   }
 }
 
+// ─── Shutdown tracking ────────────────────────────────────────
+
+let _shuttingDown    = false
+let _activePipelines = 0
+
+export function markShuttingDown(): void     { _shuttingDown = true }
+export function getActivePipelines(): number { return _activePipelines }
+
+export function waitForShutdown(timeoutMs = 10_000): Promise<void> {
+  return new Promise(resolve => {
+    if (_activePipelines === 0) { resolve(); return }
+    const deadline = setTimeout(() => {
+      console.warn(`[PIPELINE] Timeout de shutdown — ${_activePipelines} pipeline(s) ainda ativo(s)`)
+      resolve()
+    }, timeoutMs)
+    const check = setInterval(() => {
+      if (_activePipelines === 0) {
+        clearInterval(check)
+        clearTimeout(deadline)
+        resolve()
+      }
+    }, 100)
+  })
+}
+
 // ─── Pipeline principal ───────────────────────────────────────
 
 export async function runPipeline(
   event:   InboundEvent,
   runtime: TenantRuntime
 ): Promise<void> {
+  if (_shuttingDown) {
+    console.log(`[PIPELINE:${runtime.tenant.slug}] Servidor encerrando — mensagem descartada`)
+    return
+  }
+
+  _activePipelines++
   const { tenant, agent, waSession, currentArcs } = runtime
   const pipelineStart = Date.now()
   let conversationId: string | undefined
@@ -293,6 +374,14 @@ export async function runPipeline(
     if (event.type === 'document') {
       const doc = await processDocument(event.media_url, event.document_name, ctx.inboundMessage.id, tenant.id)
       ctx.textContent = doc.text
+      // Persiste texto extraído para que o watchdog possa retentar sem precisar do arquivo temp
+      await supabase.from('messages')
+        .update({ content: doc.text })
+        .eq('id', ctx.inboundMessage.id)
+    }
+
+    if (event.type === 'image') {
+      ctx.textContent = await describeImage(event.media_url, event.content ?? '', tenant.id)
     }
 
     if (event.type === 'location' && event.location) {
@@ -419,12 +508,16 @@ export async function runPipeline(
     // ── 9. MEMORY async ────────────────────────────────────────
     updateMemoryAsync(ctx, agent.id, tenant.id).catch(err => console.error(`[PIPELINE:${tenant.slug}] Memory update falhou:`, err))
 
+    // ── 10. RELATIONSHIP LEVEL async (desativado — habilitar quando validado)
+    // evolveRelationshipLevel(ctx, agent.id, tenant.id).catch(err => console.error(`[PIPELINE:${tenant.slug}] Relationship update falhou:`, err))
+
     const pipelineMs = Date.now() - pipelineStart
     console.log(`[PIPELINE:${tenant.slug}] OK ${pipelineMs}ms | delay=${remainingMs}ms`)
 
   } catch (err) {
     console.error(`[PIPELINE:${tenant.slug}] Erro fatal:`, err)
   } finally {
+    _activePipelines--
     if (conversationId) releaseConversationLock(conversationId)
   }
 }
@@ -498,6 +591,58 @@ function buildDefaultSafety(): SafetyProfile {
 // ─── Memory async ─────────────────────────────────────────────
 
 async function updateMemoryAsync(ctx: any, agentId: string, tenantId: string): Promise<void> {
-  // Placeholder — implementar extração de fatos via LLM
-  // (mesma lógica do SpiceHOT memory.module.ts, adaptada para tenant_id)
+  await extractAndSaveMemories(ctx, agentId, tenantId)
+}
+
+// ─── Relationship level ────────────────────────────────────────
+//
+// Thresholds baseados no total histórico de respostas do agente para o usuário.
+// Acumula entre conversas — cliente que voltou mantém o vínculo conquistado.
+//
+//  0  → novo (< 3 respostas)
+//  1  → conhecido (3–9)
+//  2  → regular (10–19)
+//  3  → familiar (20–49)
+//  4  → fidelizado (50–99)
+//  5  → VIP (100+)
+
+const REL_THRESHOLDS = [
+  { min: 100, level: 5 },
+  { min:  50, level: 4 },
+  { min:  20, level: 3 },
+  { min:  10, level: 2 },
+  { min:   3, level: 1 },
+  { min:   0, level: 0 },
+]
+
+async function evolveRelationshipLevel(ctx: any, agentId: string, tenantId: string): Promise<void> {
+  const { user, conversation, agent } = ctx
+  const maxLevel = agent.relationship_level_max ?? 5
+
+  // Conta todas as respostas do agente para este usuário (histórico completo)
+  const { count } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id',   user.id)
+    .eq('agent_id',  agentId)
+    .eq('tenant_id', tenantId)
+    .eq('direction', 'outbound')
+
+  const total = count ?? 0
+  const newLevel = Math.min(
+    REL_THRESHOLDS.find(t => total >= t.min)!.level,
+    maxLevel
+  )
+
+  if (newLevel !== conversation.relationship_level) {
+    await supabase
+      .from('conversations')
+      .update({ relationship_level: newLevel })
+      .eq('id', conversation.id)
+
+    console.log(
+      `[PIPELINE:${tenantId}] Vínculo ${conversation.relationship_level}→${newLevel}` +
+      ` (user=${user.id.slice(0, 8)}, ${total} respostas)`
+    )
+  }
 }

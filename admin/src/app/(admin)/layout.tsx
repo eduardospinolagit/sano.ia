@@ -32,6 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [loading, tenant])
 
   async function handleLogout() {
+    sessionStorage.removeItem('sano_tenant_cache')
     await supabase.auth.signOut()
     router.push('/login')
   }

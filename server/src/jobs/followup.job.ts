@@ -109,10 +109,22 @@ async function processConversation(
 
   if (!user?.phone) return
 
-  console.log(`[FOLLOWUP:${tenant.slug}] Enviando tentativa ${attempts + 1}/${maxAttempts} → ${user.phone}`)
+  // Recupera wa_jid da última mensagem inbound — evita enviar para LID inválido
+  const { data: lastInbound } = await supabase
+    .from('messages')
+    .select('metadata')
+    .eq('conversation_id', conv.id)
+    .eq('direction', 'inbound')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  // 6. Envia via WA
-  await waSession.sendText(user.phone, text)
+  const waJid: string | undefined = lastInbound?.metadata?.wa_jid ?? undefined
+
+  console.log(`[FOLLOWUP:${tenant.slug}] Enviando tentativa ${attempts + 1}/${maxAttempts} → ${user.phone}${waJid ? ` (jid=${waJid})` : ''}`)
+
+  // 6. Envia via WA usando o JID real (não o phone que pode ser LID)
+  await waSession.sendText(user.phone, text, waJid)
 
   // 7. Persiste outbound com flag is_followup
   await supabase.from('messages').insert({

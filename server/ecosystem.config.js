@@ -9,6 +9,7 @@ module.exports = {
       max_restarts:  20,
       min_uptime:    5000,
       watch:         false,
+      kill_timeout:  15000,   // aguarda até 15s após SIGTERM antes de SIGKILL
     },
   ],
 }
